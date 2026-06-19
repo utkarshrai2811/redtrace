@@ -90,11 +90,11 @@ func (a *Authority) CACertPEM() []byte {
 }
 
 func loadCA(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	certPEM, err := os.ReadFile(certPath)
+	certPEM, err := os.ReadFile(certPath) //nolint:gosec // G304: path is derived from the configured CA directory, not user input
 	if err != nil {
 		return nil, nil, err
 	}
-	keyPEM, err := os.ReadFile(keyPath)
+	keyPEM, err := os.ReadFile(keyPath) //nolint:gosec // G304: path is derived from the configured CA directory, not user input
 	if err != nil {
 		return nil, nil, err
 	}
@@ -161,7 +161,7 @@ func persistCA(certPath, keyPath string, cert *x509.Certificate, key *rsa.Privat
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 	// The CA certificate is public material and is intentionally world-readable
 	// so other tools and trust stores can import it.
-	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil { //nosec G306
+	if err := os.WriteFile(certPath, certPEM, 0o644); err != nil { //nolint:gosec // G306: the CA cert is public and intentionally world-readable
 		return err
 	}
 

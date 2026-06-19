@@ -92,7 +92,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 
-	go func() {
+	go func() { //nolint:gosec // G118: the shutdown watcher must use a fresh context, not the serve context
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

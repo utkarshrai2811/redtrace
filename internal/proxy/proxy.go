@@ -124,7 +124,7 @@ func (p *Proxy) Serve(ctx context.Context, ln net.Listener) error {
 		// Connections are hijacked for MITM, so do not impose a write timeout.
 	}
 
-	go func() {
+	go func() { //nolint:gosec // G118: the shutdown watcher must use a fresh context, not the serve context
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

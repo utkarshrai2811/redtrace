@@ -20,8 +20,16 @@ linters:
         - G402
         # G404: non-crypto rand is acceptable for jitter/labels, not secrets.
         - G404
+        # G704 (SSRF) and G705 (XSS): an intercepting proxy exists precisely to
+        # fetch arbitrary client-specified URLs and relay arbitrary responses,
+        # so these taint-analysis rules are fundamentally incompatible with it.
+        - G704
+        - G705
   exclusions:
     generated: lax
+    paths:
+      # Stray Go files shipped inside npm packages under the frontend project.
+      - web/node_modules
     presets:
       # Restores the v1 default of not flagging fmt.*/bytes.Buffer writes etc.
       - std-error-handling

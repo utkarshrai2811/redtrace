@@ -20,6 +20,18 @@ const ftsFieldLimit = 64 * 1024
 
 const timeLayout = time.RFC3339Nano
 
+// Query bases for ListRequests. These are constant; the dynamic WHERE clause is
+// assembled from a fixed allowlist of predicates and all user-supplied values
+// are passed as bound parameters (never concatenated).
+const (
+	listCountBase  = `SELECT COUNT(*) FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id `
+	listSelectBase = `SELECT r.id, r.timestamp, r.source, r.method, r.scheme, r.host, r.port, r.path, r.url, r.in_scope,
+	                         COALESCE(resp.status_code, 0), COALESCE(resp.body_size, 0), COALESCE(resp.mime_type, ''),
+	                         COALESCE(resp.duration_ms, 0), (resp.id IS NOT NULL)
+	                  FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id `
+	listOrderTail = ` ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`
+)
+
 // RequestFilter constrains a ListRequests query. Zero-valued fields are ignored.
 type RequestFilter struct {
 	Method      string
@@ -111,7 +123,7 @@ func (db *DB) ListRequests(ctx context.Context, f RequestFilter) ([]RequestSumma
 	where, args := buildFilter(f)
 
 	var total int
-	countQ := `SELECT COUNT(*) FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id ` + where
+	countQ := listCountBase + where //nolint:gosec // G202: WHERE is constant fragments; values are bound parameters
 	if err := db.sql.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count requests: %w", err)
 	}
@@ -120,11 +132,7 @@ func (db *DB) ListRequests(ctx context.Context, f RequestFilter) ([]RequestSumma
 	if limit <= 0 {
 		limit = 50
 	}
-	dataQ := `SELECT r.id, r.timestamp, r.source, r.method, r.scheme, r.host, r.port, r.path, r.url, r.in_scope,
-	                 COALESCE(resp.status_code, 0), COALESCE(resp.body_size, 0), COALESCE(resp.mime_type, ''),
-	                 COALESCE(resp.duration_ms, 0), (resp.id IS NOT NULL)
-	          FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id ` +
-		where + ` ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`
+	dataQ := listSelectBase + where + listOrderTail //nolint:gosec // G202: WHERE is constant fragments; values are bound parameters
 	dataArgs := append(append([]any{}, args...), limit, f.Offset)
 
 	rows, err := db.sql.QueryContext(ctx, dataQ, dataArgs...)
