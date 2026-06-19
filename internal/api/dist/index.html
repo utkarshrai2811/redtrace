@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RedTrace</title>
+    <style>
+      body { background:#0b0d10; color:#e5e7eb; font-family:ui-sans-serif,system-ui,sans-serif;
+             display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+      .card { max-width:520px; padding:2rem; text-align:center; }
+      code { background:#1f2937; padding:.15rem .4rem; border-radius:.25rem; color:#fca5a5; }
+      h1 { color:#ef4444; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>RedTrace</h1>
+      <p>The web UI has not been built into this binary yet.</p>
+      <p>Run <code>make web-build</code> (or <code>npm run build</code> in <code>web/</code>) and rebuild,
+         or run the frontend dev server with <code>make dev</code>.</p>
+      <p>The REST API is live at <code>/api</code> and the traffic stream at <code>/ws/traffic</code>.</p>
+    </div>
+  </body>
+</html>

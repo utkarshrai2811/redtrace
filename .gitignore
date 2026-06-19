@@ -21,6 +21,10 @@ web/node_modules/
 web/dist/
 node_modules/
 
+# Embedded web build: the placeholder index.html is committed, build output is not
+/internal/api/dist/*
+!/internal/api/dist/index.html
+
 # Editor / OS
 .DS_Store
 .idea/
