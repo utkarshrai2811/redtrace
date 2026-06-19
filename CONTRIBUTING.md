@@ -15,6 +15,25 @@ make web-install    # install frontend deps
 make dev            # run proxy + frontend in dev mode
 ```
 
+### Troubleshooting: macOS rollup native binary
+
+If `make web-build` / `npm run build` fails with `dlopen … different Team IDs`
+(macOS library validation refusing to load rollup's prebuilt native module),
+use any one of:
+
+1. **Re-sign your Node binary** (recommended — fixes all native addons at once):
+   ```bash
+   codesign --force --sign - "$(which node)"   # prefix with sudo if Node is root-owned
+   ```
+2. **Use rollup's pure-WASM build** (no native binary; do not commit this, CI
+   uses the faster native build on Linux):
+   ```bash
+   cd web
+   npm pkg set "overrides.rollup=npm:@rollup/wasm-node@^4"
+   rm -rf node_modules package-lock.json && npm install && npm run build
+   ```
+3. **Build the UI in Docker** (Linux, no signing issues): `make docker`.
+
 ## Branch strategy
 
 - `main` — production releases only (protected; requires PR + green CI).
