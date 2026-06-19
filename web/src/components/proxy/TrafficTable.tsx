@@ -1,5 +1,7 @@
 import { memo } from 'react';
+import { Link } from 'react-router-dom';
 import { useProxyStore } from '../../store/proxyStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { MethodBadge, statusTextClass } from './badges';
 import { formatBytes, formatDuration, formatTime } from '../../lib/format';
 import { Spinner } from '../ui/Spinner';
@@ -29,7 +31,7 @@ const TrafficRow = memo(function TrafficRow({
         !row.inScope && 'opacity-50',
       )}
     >
-      <td className="px-2 py-1 text-right text-zinc-600 tabular-nums">
+      <td className="px-2 py-1 text-right text-zinc-500 tabular-nums">
         <span className="traffic-num" />
       </td>
       <td className="px-2 py-1">
@@ -62,7 +64,8 @@ const TrafficRow = memo(function TrafficRow({
             e.stopPropagation();
             onDelete(row.id);
           }}
-          className="invisible rounded px-1 text-zinc-500 hover:text-red-400 group-hover:visible"
+          aria-label="Delete request"
+          className="rounded px-1 text-zinc-700 hover:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 group-hover:text-zinc-500"
         >
           ✕
         </button>
@@ -78,6 +81,7 @@ export function TrafficTable() {
   const selectedId = useProxyStore((s) => s.selectedId);
   const selectRow = useProxyStore((s) => s.selectRow);
   const deleteRow = useProxyStore((s) => s.deleteRow);
+  const proxyAddr = useSettingsStore((s) => s.proxySettings?.proxyAddr);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -87,7 +91,19 @@ export function TrafficTable() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse font-mono text-xs">
+        <table className="w-full table-fixed border-collapse font-mono text-xs">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[68px]" />
+            <col className="w-[180px]" />
+            <col />
+            <col className="w-16" />
+            <col className="w-20" />
+            <col className="w-[130px]" />
+            <col className="w-20" />
+            <col className="w-16" />
+            <col className="w-8" />
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-panel">
             <tr className="border-b border-zinc-800 text-left text-2xs uppercase tracking-wide text-zinc-500">
               <th className="px-2 py-1.5 text-right font-medium">#</th>
@@ -116,11 +132,18 @@ export function TrafficTable() {
         </table>
 
         {rows.length === 0 && !loading && (
-          <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-1 py-12 text-center text-zinc-600">
-            <span className="text-sm">No traffic captured</span>
-            <span className="text-2xs">
-              Point your browser at the proxy and requests will stream in live.
+          <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 py-12 text-center text-zinc-500">
+            <span className="text-sm text-zinc-400">No traffic captured</span>
+            <span className="max-w-md text-2xs leading-relaxed">
+              Set your browser or system HTTP/HTTPS proxy to{' '}
+              <code className="rounded bg-zinc-800 px-1 text-zinc-300">
+                {proxyAddr || '127.0.0.1:8080'}
+              </code>
+              , then install the CA certificate so HTTPS can be intercepted.
             </span>
+            <Link to="/settings" className="text-2xs text-accent-fg hover:text-accent">
+              Open Settings →
+            </Link>
           </div>
         )}
 

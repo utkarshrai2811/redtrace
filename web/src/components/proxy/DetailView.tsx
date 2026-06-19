@@ -1,25 +1,31 @@
 import { useMemo } from 'react';
 import { useProxyStore } from '../../store/proxyStore';
-import { decodeBase64 } from '../../lib/encoding';
+import { decode, type Decoded } from '../../lib/encoding';
 import { MethodBadge, statusTextClass } from './badges';
 import { Spinner } from '../ui/Spinner';
 
-function RawPane({ title, content, empty }: { title: string; content: string; empty?: boolean }) {
+function RawPane({ title, data, empty }: { title: string; data: Decoded; empty?: boolean }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900/60 px-3 py-1">
         <span className="text-2xs font-semibold uppercase tracking-wider text-zinc-500">
           {title}
         </span>
-        {!empty && <span className="text-2xs text-zinc-600">{content.length} bytes</span>}
+        {!empty && (
+          <span className="text-2xs text-zinc-500">{data.bytes.toLocaleString('en-US')} bytes</span>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-canvas px-3 py-2">
         {empty ? (
-          <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+          <div className="flex h-full items-center justify-center text-xs text-zinc-500">
             — no response —
           </div>
+        ) : !data.ok ? (
+          <div className="flex h-full items-center justify-center text-xs text-zinc-500">
+            could not decode (binary content)
+          </div>
         ) : (
-          <pre className="raw-http text-zinc-300">{content}</pre>
+          <pre className="raw-http text-zinc-300">{data.text}</pre>
         )}
       </div>
     </div>
@@ -32,12 +38,12 @@ export function DetailView() {
   const error = useProxyStore((s) => s.detailError);
   const selectedId = useProxyStore((s) => s.selectedId);
 
-  const requestText = useMemo(
-    () => (detail ? decodeBase64(detail.requestRaw) : ''),
+  const requestData = useMemo(
+    () => (detail ? decode(detail.requestRaw) : { ok: true, text: '', bytes: 0 }),
     [detail],
   );
-  const responseText = useMemo(
-    () => (detail?.responseRaw ? decodeBase64(detail.responseRaw) : ''),
+  const responseData = useMemo(
+    () => (detail?.responseRaw ? decode(detail.responseRaw) : { ok: true, text: '', bytes: 0 }),
     [detail],
   );
 
@@ -85,8 +91,8 @@ export function DetailView() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col divide-y divide-zinc-800 lg:flex-row lg:divide-x lg:divide-y-0">
-        <RawPane title="Request" content={requestText} />
-        <RawPane title="Response" content={responseText} empty={!hasResponse} />
+        <RawPane title="Request" data={requestData} />
+        <RawPane title="Response" data={responseData} empty={!hasResponse} />
       </div>
     </div>
   );

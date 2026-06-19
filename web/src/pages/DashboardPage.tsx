@@ -5,7 +5,6 @@ import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/Card';
 import { MethodBadge, statusTextClass } from '../components/proxy/badges';
 import { api } from '../lib/api';
 import { useSettingsStore } from '../store/settingsStore';
-import { useProxyStore } from '../store/proxyStore';
 import { formatCount, formatTime } from '../lib/format';
 import type { RequestSummary } from '../lib/types';
 
@@ -47,8 +46,6 @@ function StatCard({
 export function DashboardPage() {
   const health = useSettingsStore((s) => s.health);
   const fetchAll = useSettingsStore((s) => s.fetchAll);
-  // Live total from the proxy store keeps the headline count fresh via WS.
-  const liveTotal = useProxyStore((s) => s.total);
 
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [recent, setRecent] = useState<RequestSummary[]>([]);
@@ -85,8 +82,10 @@ export function DashboardPage() {
     };
   }, [fetchAll]);
 
-  const total = Math.max(stats.total, liveTotal);
-  const outOfScope = Math.max(0, total - stats.inScope);
+  // All three derive from the same one-shot snapshot, so they stay consistent
+  // (a Dashboard visit reflects capture state at load time).
+  const total = stats.total;
+  const outOfScope = Math.max(0, stats.total - stats.inScope);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

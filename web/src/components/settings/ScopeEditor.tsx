@@ -102,6 +102,7 @@ export function ScopeEditor() {
             >
               <Toggle
                 tone="green"
+                ariaLabel={rule.enabled ? 'Disable scope rule' : 'Enable scope rule'}
                 checked={rule.enabled}
                 onChange={(v) => update(rule.id, { enabled: v })}
               />

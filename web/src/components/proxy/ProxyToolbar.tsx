@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { Toggle } from '../ui/Toggle';
@@ -14,6 +13,7 @@ export function ProxyToolbar() {
   const filters = useProxyStore((s) => s.filters);
   const hosts = useProxyStore((s) => s.hosts);
   const setFilter = useProxyStore((s) => s.setFilter);
+  const setFilterValue = useProxyStore((s) => s.setFilterValue);
   const fetchList = useProxyStore((s) => s.fetchList);
   const clearRows = useProxyStore((s) => s.clearRows);
   const total = useProxyStore((s) => s.total);
@@ -22,21 +22,9 @@ export function ProxyToolbar() {
   const setInterceptEnabled = useProxyStore((s) => s.setInterceptEnabled);
   const setInterceptResponses = useProxyStore((s) => s.setInterceptResponses);
 
-  // Local mirrors of the text inputs so typing feels instant; the store is
-  // updated on a debounce.
-  const [q, setQ] = useState(filters.q);
-  const [mime, setMime] = useState(filters.mime);
-
-  // Keep local state in sync if filters are reset elsewhere.
-  const lastFilters = useRef({ q: filters.q, mime: filters.mime });
-  useEffect(() => {
-    if (filters.q !== lastFilters.current.q) setQ(filters.q);
-    if (filters.mime !== lastFilters.current.mime) setMime(filters.mime);
-    lastFilters.current = { q: filters.q, mime: filters.mime };
-  }, [filters.q, filters.mime]);
-
-  const debouncedQ = useDebouncedCallback((value: string) => setFilter('q', value), 300);
-  const debouncedMime = useDebouncedCallback((value: string) => setFilter('mime', value), 300);
+  // Text inputs write their value into the store immediately (so a later
+  // dropdown change never discards typed text) but debounce only the fetch.
+  const debouncedFetch = useDebouncedCallback(() => void fetchList(), 300);
 
   return (
     <div className="shrink-0 border-b border-zinc-800 bg-panel/40">
@@ -51,7 +39,11 @@ export function ProxyToolbar() {
             onChange={(v) => void setInterceptEnabled(v)}
             label={intercept.enabled ? 'On' : 'Off'}
           />
-          {intercept.count > 0 && <Badge tone="accent">{intercept.count} held</Badge>}
+          {/* Fixed-width slot so the badge appearing/disappearing never shifts
+              the controls to its right. */}
+          <span className="inline-flex min-w-[3.5rem] justify-start">
+            {intercept.count > 0 && <Badge tone="accent">{intercept.count} held</Badge>}
+          </span>
         </div>
 
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-400">
@@ -59,10 +51,16 @@ export function ProxyToolbar() {
             type="checkbox"
             checked={intercept.interceptResponses}
             onChange={(e) => void setInterceptResponses(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-accent focus:ring-0 focus:ring-offset-0"
+            className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 accent-[#ef4444] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
           />
           Responses too
         </label>
+
+        {intercept.enabled && (
+          <span className="text-2xs text-zinc-500">
+            holding in-scope traffic only — set a scope in Settings to focus
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <span className="text-2xs text-zinc-500">{total.toLocaleString('en-US')} captured</span>
@@ -151,10 +149,10 @@ export function ProxyToolbar() {
         <Input
           aria-label="MIME filter"
           placeholder="MIME"
-          value={mime}
+          value={filters.mime}
           onChange={(e) => {
-            setMime(e.target.value);
-            debouncedMime(e.target.value);
+            setFilterValue('mime', e.target.value);
+            debouncedFetch();
           }}
           className="w-28"
         />
@@ -162,10 +160,10 @@ export function ProxyToolbar() {
         <Input
           aria-label="Search"
           placeholder="Search URL / body…"
-          value={q}
+          value={filters.q}
           onChange={(e) => {
-            setQ(e.target.value);
-            debouncedQ(e.target.value);
+            setFilterValue('q', e.target.value);
+            debouncedFetch();
           }}
           className="w-52"
         />

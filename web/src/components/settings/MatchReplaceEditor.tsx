@@ -108,6 +108,7 @@ export function MatchReplaceEditor() {
               <div className="flex flex-wrap items-center gap-2">
                 <Toggle
                   tone="green"
+                  ariaLabel={rule.enabled ? 'Disable rule' : 'Enable rule'}
                   checked={rule.enabled}
                   onChange={(v) => update(rule.id, { enabled: v })}
                 />

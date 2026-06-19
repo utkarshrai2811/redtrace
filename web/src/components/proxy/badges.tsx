@@ -23,6 +23,7 @@ export function MethodBadge({ method }: { method: string }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- small helper colocated with the badges it styles
 export function statusTextClass(status: number): string {
   if (status >= 200 && status < 300) return 'text-emerald-400';
   if (status >= 300 && status < 400) return 'text-sky-400';

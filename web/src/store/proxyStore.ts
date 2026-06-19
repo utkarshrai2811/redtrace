@@ -48,6 +48,7 @@ interface ProxyState {
   fetchList: () => Promise<void>;
   fetchHosts: () => Promise<void>;
   setFilter: <K extends keyof RequestFilters>(key: K, value: RequestFilters[K]) => void;
+  setFilterValue: <K extends keyof RequestFilters>(key: K, value: RequestFilters[K]) => void;
   resetFilters: () => void;
 
   selectRow: (id: string | null) => Promise<void>;
@@ -66,10 +67,36 @@ interface ProxyState {
   applyInterceptFrame: (state: InterceptState) => void;
 }
 
+// Tracks the latest fetchList call so out-of-order responses don't clobber a
+// newer result.
+let listToken = 0;
+
+function statusMatches(code: number, status: string): boolean {
+  if (status === 'ANY' || status === '') return true;
+  if (/^[1-5]xx$/.test(status)) {
+    const cls = Number(status[0]);
+    return code >= cls * 100 && code <= cls * 100 + 99;
+  }
+  const exact = Number(status);
+  return Number.isNaN(exact) ? true : code === exact;
+}
+
+// Mirrors the backend filter for live-streamed rows. The `q` search is matched
+// against URL/host only (the summary has no body), so a live row whose body
+// matches `q` appears on the next refresh rather than instantly — acceptable,
+// and far better than the previous behavior where live frames ignored filters.
 function matchesFilters(row: RequestSummary, f: RequestFilters): boolean {
   if (f.method !== 'ANY' && row.method !== f.method) return false;
   if (f.host !== 'ANY' && row.host !== f.host) return false;
   if (f.scope && !row.inScope) return false;
+  if (f.status !== 'ANY' && f.status !== '') {
+    if (!row.hasResponse || !statusMatches(row.statusCode, f.status)) return false;
+  }
+  if (f.mime && !row.mimeType.toLowerCase().includes(f.mime.toLowerCase())) return false;
+  if (f.q) {
+    const q = f.q.toLowerCase();
+    if (!row.url.toLowerCase().includes(q) && !row.host.toLowerCase().includes(q)) return false;
+  }
   return true;
 }
 
@@ -90,11 +117,14 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
   intercept: { ...EMPTY_INTERCEPT },
 
   fetchList: async () => {
+    const token = ++listToken;
     set({ loadingList: true, listError: null });
     try {
       const res = await api.listRequests(get().filters, 1, PER_PAGE);
+      if (token !== listToken) return; // a newer fetch superseded this one
       set({ rows: res.data, total: res.total, loadingList: false });
     } catch (err) {
+      if (token !== listToken) return;
       const message = err instanceof ApiError ? err.message : 'Failed to load requests';
       set({ loadingList: false, listError: message });
     }
@@ -112,6 +142,13 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
   setFilter: (key, value) => {
     set((s) => ({ filters: { ...s.filters, [key]: value } }));
     void get().fetchList();
+  },
+
+  // Update a filter value without fetching (used for text inputs that debounce
+  // the network call separately, so typed text is never lost on a dropdown
+  // change).
+  setFilterValue: (key, value) => {
+    set((s) => ({ filters: { ...s.filters, [key]: value } }));
   },
 
   resetFilters: () => {
@@ -232,17 +269,10 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
 
   applyTrafficFrame: (summary) => {
     set((s) => {
+      // Each backend frame is a distinct, fully-captured exchange. Frames that
+      // don't match the active filter are left out of the view and the count.
       if (!matchesFilters(summary, s.filters)) {
-        // Still bump the total so the dashboard/count stays roughly accurate,
-        // but keep it out of the filtered view.
-        return { total: s.total + 1 };
-      }
-      // Replace if we already have this id (e.g. response arrived after request).
-      const existingIndex = s.rows.findIndex((r) => r.id === summary.id);
-      if (existingIndex >= 0) {
-        const rows = s.rows.slice();
-        rows[existingIndex] = summary;
-        return { rows };
+        return {};
       }
       const rows = [summary, ...s.rows];
       if (rows.length > MAX_ROWS) rows.length = MAX_ROWS;

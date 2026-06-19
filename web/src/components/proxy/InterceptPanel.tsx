@@ -86,15 +86,15 @@ export function InterceptPanel() {
   // the traffic table stay visible and usable, and there are always escape
   // hatches so the operator is never trapped behind a flooding queue.
   return (
-    <div className="absolute inset-x-0 bottom-0 z-40 flex h-[55%] flex-col border-t-2 border-accent/60 bg-panel shadow-2xl shadow-black/60">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-        <h2 className="text-sm font-semibold text-zinc-100">Intercept</h2>
+    <div className="absolute inset-x-0 bottom-0 z-40 flex h-[55%] min-h-[280px] max-h-[85%] flex-col border-t-2 border-accent/60 bg-panel shadow-2xl shadow-black/60">
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2">
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+        <h2 className="shrink-0 text-sm font-semibold text-zinc-100">Intercept</h2>
         <Badge tone="accent">{intercept.count} held</Badge>
-        <span className="hidden text-2xs text-zinc-500 sm:inline">
+        <span className="hidden min-w-0 flex-1 truncate text-2xs text-zinc-500 sm:block">
           in-scope traffic only — set a scope to focus
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => void forwardAll()}>
             Forward all
           </Button>
