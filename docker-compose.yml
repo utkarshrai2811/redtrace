@@ -1,0 +1,16 @@
+services:
+  redtrace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: redtrace:latest
+    container_name: redtrace
+    ports:
+      - "8080:8080" # intercepting proxy
+      - "9090:9090" # web UI + API
+    volumes:
+      - redtrace-data:/data
+    restart: unless-stopped
+
+volumes:
+  redtrace-data:
