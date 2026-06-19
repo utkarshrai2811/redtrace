@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="RedTrace logo">
+  <rect width="120" height="120" rx="24" fill="#0b0d10"/>
+  <circle cx="60" cy="60" r="34" fill="none" stroke="#ef4444" stroke-width="6"/>
+  <circle cx="60" cy="60" r="6" fill="#ef4444"/>
+  <path d="M60 26 V12 M60 108 V94 M26 60 H12 M108 60 H94" stroke="#ef4444" stroke-width="6" stroke-linecap="round"/>
+  <path d="M60 60 L98 98" stroke="#f97316" stroke-width="6" stroke-linecap="round"/>
+</svg>

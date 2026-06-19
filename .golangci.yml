@@ -1,0 +1,33 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosec
+    - exhaustive
+    - ineffassign
+    - misspell
+
+linters-settings:
+  exhaustive:
+    default-signifies-exhaustive: true
+  gosec:
+    excludes:
+      # G402: TLS InsecureSkipVerify is intentional for an intercepting proxy.
+      - G402
+      # G404: non-crypto rand is acceptable for jitter/labels, not secrets.
+      - G404
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+  max-issues-per-linter: 0
+  max-same-issues: 0

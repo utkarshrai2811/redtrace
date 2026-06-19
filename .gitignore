@@ -1,0 +1,41 @@
+# Binaries
+/bin/
+/dist/
+/redtrace
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage.txt
+coverage.html
+
+# Local runtime data
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Frontend
+web/node_modules/
+web/dist/
+node_modules/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
+
+# Claude Code local settings
+.claude/
+
+# Generated certs (never commit private keys)
+*.pem
+*.key
+*.crt
+!docs/**/*.pem
