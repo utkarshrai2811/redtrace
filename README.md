@@ -29,8 +29,9 @@ web UI.
 |---|:---:|:---:|:---:|
 | Intercepting HTTP/HTTPS proxy | ✅ | ✅ | ✅ |
 | Live traffic history + search | ✅ | ✅ | ✅ |
-| Repeater | 🔜 | ✅ | ✅ |
-| Decoder / Comparer | 🔜 | ✅ | ✅ |
+| Repeater | ✅ | ✅ | ✅ |
+| Decoder / Comparer | ✅ | ✅ | ✅ |
+| Target site map | ✅ | ✅ | ✅ |
 | Intruder (all attack types, unthrottled) | 🔜 | ⏳ throttled | ✅ |
 | Active + passive scanner | 🔜 | ❌ | ✅ |
 | Out-of-band (Collaborator) | 🔜 | ❌ | ✅ |
@@ -101,9 +102,9 @@ at `~/.config/redtrace/ca/`.
 
 RedTrace is built in phases. See [`docs/phases/`](docs/phases) for detail.
 
-1. **Foundation & core proxy** — _in progress_
-2. Core analysis tools (Repeater, Decoder, Comparer, Site Map)
-3. Intruder
+1. Foundation & core proxy — ✅ done
+2. Core analysis tools (Repeater, Decoder, Comparer, Site Map) — ✅ done
+3. Intruder — _next_
 4. Scanner (passive + active, OWASP Top 10)
 5. Crawler & Sequencer
 6. Out-of-band / Collaborator
