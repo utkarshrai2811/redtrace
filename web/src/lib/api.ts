@@ -113,6 +113,10 @@ export const api = {
     return request<void>(`/api/requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
+  clearRequests(): Promise<void> {
+    return request<void>('/api/requests', { method: 'DELETE' });
+  },
+
   hosts(): Promise<string[]> {
     return request<string[]>('/api/hosts');
   },
@@ -162,5 +166,13 @@ export const api = {
     return request<InterceptState>(`/api/intercept/${encodeURIComponent(id)}/drop`, {
       method: 'POST',
     });
+  },
+
+  forwardAll(): Promise<InterceptState> {
+    return request<InterceptState>('/api/intercept/forward-all', { method: 'POST' });
+  },
+
+  dropAll(): Promise<InterceptState> {
+    return request<InterceptState>('/api/intercept/drop-all', { method: 'POST' });
   },
 };

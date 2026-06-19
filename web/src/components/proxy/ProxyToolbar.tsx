@@ -15,6 +15,7 @@ export function ProxyToolbar() {
   const hosts = useProxyStore((s) => s.hosts);
   const setFilter = useProxyStore((s) => s.setFilter);
   const fetchList = useProxyStore((s) => s.fetchList);
+  const clearRows = useProxyStore((s) => s.clearRows);
   const total = useProxyStore((s) => s.total);
 
   const intercept = useProxyStore((s) => s.intercept);
@@ -79,6 +80,30 @@ export function ProxyToolbar() {
               <path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6" />
             </svg>
             Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (window.confirm('Clear all captured traffic? This cannot be undone.')) {
+                void clearRows();
+              }
+            }}
+            title="Clear all captured traffic"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+            </svg>
+            Clear
           </Button>
         </div>
       </div>

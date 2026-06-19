@@ -58,4 +58,18 @@
     word-break: break-word;
     tab-size: 4;
   }
+
+  /* Row numbering via a CSS counter, so rows carry no per-index prop and the
+     memoized table only re-renders changed rows. */
+  .traffic-rows {
+    counter-reset: rt-row;
+  }
+
+  .traffic-rows > tr {
+    counter-increment: rt-row;
+  }
+
+  .traffic-num::before {
+    content: counter(rt-row);
+  }
 }

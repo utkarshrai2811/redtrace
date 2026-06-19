@@ -17,7 +17,7 @@ export function ProxyPage() {
   }, [fetchList, fetchHosts, fetchIntercept]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       <ProxyToolbar />
 
       {/* Top: traffic table. Bottom: request/response detail. */}

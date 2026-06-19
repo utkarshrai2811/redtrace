@@ -9,6 +9,10 @@ import type {
 
 const PER_PAGE = 100;
 
+// Cap the live in-memory list so high-volume traffic never grows the DOM/table
+// unbounded. The full history is still queryable from the database.
+const MAX_ROWS = 500;
+
 const DEFAULT_FILTERS: RequestFilters = {
   method: 'ANY',
   host: 'ANY',
@@ -48,12 +52,15 @@ interface ProxyState {
 
   selectRow: (id: string | null) => Promise<void>;
   deleteRow: (id: string) => Promise<void>;
+  clearRows: () => Promise<void>;
 
   fetchIntercept: () => Promise<void>;
   setInterceptEnabled: (enabled: boolean) => Promise<void>;
   setInterceptResponses: (interceptResponses: boolean) => Promise<void>;
   forwardItem: (id: string, raw?: string) => Promise<void>;
   dropItem: (id: string) => Promise<void>;
+  forwardAll: () => Promise<void>;
+  dropAll: () => Promise<void>;
 
   applyTrafficFrame: (summary: RequestSummary) => void;
   applyInterceptFrame: (state: InterceptState) => void;
@@ -151,6 +158,15 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
     });
   },
 
+  clearRows: async () => {
+    try {
+      await api.clearRequests();
+    } catch {
+      // Clear the view regardless so the UI stays responsive.
+    }
+    set({ rows: [], total: 0, selectedId: null, detail: null, detailError: null });
+  },
+
   fetchIntercept: async () => {
     try {
       const intercept = await api.getIntercept();
@@ -196,6 +212,24 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
     }
   },
 
+  forwardAll: async () => {
+    try {
+      const intercept = await api.forwardAll();
+      set({ intercept });
+    } catch {
+      void get().fetchIntercept();
+    }
+  },
+
+  dropAll: async () => {
+    try {
+      const intercept = await api.dropAll();
+      set({ intercept });
+    } catch {
+      void get().fetchIntercept();
+    }
+  },
+
   applyTrafficFrame: (summary) => {
     set((s) => {
       if (!matchesFilters(summary, s.filters)) {
@@ -210,7 +244,9 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
         rows[existingIndex] = summary;
         return { rows };
       }
-      return { rows: [summary, ...s.rows], total: s.total + 1 };
+      const rows = [summary, ...s.rows];
+      if (rows.length > MAX_ROWS) rows.length = MAX_ROWS;
+      return { rows, total: s.total + 1 };
     });
   },
 

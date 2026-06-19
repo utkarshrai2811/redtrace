@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useProxyStore } from '../../store/proxyStore';
 import { MethodBadge, statusTextClass } from './badges';
 import { formatBytes, formatDuration, formatTime } from '../../lib/format';
@@ -5,29 +6,32 @@ import { Spinner } from '../ui/Spinner';
 import { cn } from '../../lib/cn';
 import type { RequestSummary } from '../../lib/types';
 
-function TrafficRow({
+// Memoized so that streaming a new row (prepended) or selecting a row only
+// re-renders the affected rows, not the whole table. The row number comes from
+// a CSS counter (see .traffic-num) so it carries no per-row index prop.
+const TrafficRow = memo(function TrafficRow({
   row,
-  index,
   selected,
   onSelect,
   onDelete,
 }: {
   row: RequestSummary;
-  index: number;
   selected: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <tr
-      onClick={onSelect}
+      onClick={() => onSelect(row.id)}
       className={cn(
         'group cursor-pointer border-b border-zinc-800/50',
         selected ? 'bg-accent/10' : 'hover:bg-zinc-800/40',
         !row.inScope && 'opacity-50',
       )}
     >
-      <td className="px-2 py-1 text-right text-zinc-600 tabular-nums">{index + 1}</td>
+      <td className="px-2 py-1 text-right text-zinc-600 tabular-nums">
+        <span className="traffic-num" />
+      </td>
       <td className="px-2 py-1">
         <MethodBadge method={row.method} />
       </td>
@@ -56,7 +60,7 @@ function TrafficRow({
           title="Delete"
           onClick={(e) => {
             e.stopPropagation();
-            onDelete();
+            onDelete(row.id);
           }}
           className="invisible rounded px-1 text-zinc-500 hover:text-red-400 group-hover:visible"
         >
@@ -65,7 +69,7 @@ function TrafficRow({
       </td>
     </tr>
   );
-}
+});
 
 export function TrafficTable() {
   const rows = useProxyStore((s) => s.rows);
@@ -98,15 +102,14 @@ export function TrafficTable() {
               <th className="px-1 py-1.5" />
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row, index) => (
+          <tbody className="traffic-rows">
+            {rows.map((row) => (
               <TrafficRow
                 key={row.id}
                 row={row}
-                index={index}
                 selected={row.id === selectedId}
-                onSelect={() => void selectRow(row.id)}
-                onDelete={() => void deleteRow(row.id)}
+                onSelect={selectRow}
+                onDelete={deleteRow}
               />
             ))}
           </tbody>
