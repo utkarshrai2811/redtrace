@@ -1,8 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useProxyStore } from '../../store/proxyStore';
 import { decode, type Decoded } from '../../lib/encoding';
+import { api, ApiError } from '../../lib/api';
 import { MethodBadge, statusTextClass } from './badges';
 import { Spinner } from '../ui/Spinner';
+import { Button } from '../ui/Button';
 
 function RawPane({ title, data, empty }: { title: string; data: Decoded; empty?: boolean }) {
   return (
@@ -37,6 +40,22 @@ export function DetailView() {
   const loading = useProxyStore((s) => s.loadingDetail);
   const error = useProxyStore((s) => s.detailError);
   const selectedId = useProxyStore((s) => s.selectedId);
+  const navigate = useNavigate();
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const sendToRepeater = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api.sendToRepeater(selectedId);
+      navigate('/repeater');
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Failed to send to Repeater');
+      setSending(false);
+    }
+  };
 
   const requestData = useMemo(
     () => (detail ? decode(detail.requestRaw) : { ok: true, text: '', bytes: 0 }),
@@ -88,6 +107,16 @@ export function DetailView() {
             {response.reason ? ` ${response.reason}` : ''}
           </span>
         )}
+        {sendError && <span className="text-2xs text-red-400">{sendError}</span>}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={() => void sendToRepeater()}
+          className="shrink-0"
+        >
+          {sending ? 'Sending…' : 'Send to Repeater'}
+        </Button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col divide-y divide-zinc-800 lg:flex-row lg:divide-x lg:divide-y-0">

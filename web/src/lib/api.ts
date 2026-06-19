@@ -1,4 +1,9 @@
 import type {
+  ComparerMode,
+  ComparerResponse,
+  DecoderDetectResponse,
+  DecoderOp,
+  DecoderRunResponse,
   HealthResponse,
   InterceptState,
   MatchReplaceRule,
@@ -7,6 +12,12 @@ import type {
   RequestFilters,
   RequestListResponse,
   ScopeRule,
+  SendResponse,
+  SitemapHost,
+  SitemapNoteInput,
+  TabDetail,
+  TabInput,
+  TabView,
 } from './types';
 
 /**
@@ -174,5 +185,87 @@ export const api = {
 
   dropAll(): Promise<InterceptState> {
     return request<InterceptState>('/api/intercept/drop-all', { method: 'POST' });
+  },
+
+  // --- Decoder ---
+
+  decoderRun(input: string, operations: DecoderOp[]): Promise<DecoderRunResponse> {
+    return request<DecoderRunResponse>('/api/decoder/run', {
+      method: 'POST',
+      body: JSON.stringify({ input, operations }),
+    });
+  },
+
+  decoderDetect(input: string): Promise<DecoderDetectResponse> {
+    return request<DecoderDetectResponse>('/api/decoder/detect', {
+      method: 'POST',
+      body: JSON.stringify({ input }),
+    });
+  },
+
+  // --- Comparer ---
+
+  comparer(a: string, b: string, mode: ComparerMode): Promise<ComparerResponse> {
+    return request<ComparerResponse>('/api/comparer', {
+      method: 'POST',
+      body: JSON.stringify({ a, b, mode }),
+    });
+  },
+
+  // --- Repeater ---
+
+  repeaterTabs(): Promise<TabView[]> {
+    return request<TabView[]>('/api/repeater/tabs');
+  },
+
+  createRepeaterTab(body: TabInput): Promise<TabView> {
+    return request<TabView>('/api/repeater/tabs', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getRepeaterTab(id: string): Promise<TabDetail> {
+    return request<TabDetail>(`/api/repeater/tabs/${encodeURIComponent(id)}`);
+  },
+
+  updateRepeaterTab(id: string, body: TabInput): Promise<TabView> {
+    return request<TabView>(`/api/repeater/tabs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteRepeaterTab(id: string): Promise<void> {
+    return request<void>(`/api/repeater/tabs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  sendRepeaterTab(id: string): Promise<SendResponse> {
+    return request<SendResponse>(`/api/repeater/tabs/${encodeURIComponent(id)}/send`, {
+      method: 'POST',
+    });
+  },
+
+  // --- Site Map ---
+
+  sitemap(): Promise<SitemapHost[]> {
+    return request<SitemapHost[]>('/api/sitemap');
+  },
+
+  putSitemapNote(body: SitemapNoteInput): Promise<void> {
+    return request<void>('/api/sitemap/note', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  // --- Send to Repeater (from the proxy) ---
+
+  sendToRepeater(id: string): Promise<TabView> {
+    return request<TabView>(`/api/requests/${encodeURIComponent(id)}/send-to-repeater`, {
+      method: 'POST',
+    });
   },
 };

@@ -152,3 +152,112 @@ export interface RequestFilters {
   q: string;
   scope: boolean;
 }
+
+// --- Phase 2 ---
+
+// Decoder
+export type DecoderOp =
+  | 'url_encode'
+  | 'url_decode'
+  | 'base64_encode'
+  | 'base64_decode'
+  | 'base64url_encode'
+  | 'base64url_decode'
+  | 'hex_encode'
+  | 'hex_decode'
+  | 'html_encode'
+  | 'html_decode'
+  | 'gzip_compress'
+  | 'gzip_decompress'
+  | 'jwt_decode';
+
+export interface DecoderRunResponse {
+  output: string;
+}
+
+export interface DecoderDetectResponse {
+  op: string;
+  ok: boolean;
+}
+
+// Comparer
+export type ComparerMode = 'lines' | 'words';
+export type DiffOp = 'equal' | 'insert' | 'delete';
+
+export interface DiffSegment {
+  op: DiffOp;
+  text: string;
+}
+
+export interface ComparerResponse {
+  segments: DiffSegment[];
+}
+
+// Repeater (raw fields are base64)
+export interface TabView {
+  id: string;
+  name: string;
+  scheme: string;
+  host: string;
+  followRedirects: boolean;
+  httpVersion: string;
+  createdAt: string;
+  updatedAt: string;
+  raw: string;
+}
+
+export interface HistoryView {
+  id: string;
+  statusCode: number;
+  durationMs: number;
+  createdAt: string;
+  requestRaw: string;
+  responseRaw: string;
+}
+
+export interface TabDetail {
+  tab: TabView;
+  history: HistoryView[];
+}
+
+/** Fields accepted when creating/updating a Repeater tab (raw is base64). */
+export interface TabInput {
+  name: string;
+  scheme: string;
+  host: string;
+  followRedirects: boolean;
+  httpVersion: string;
+  raw: string;
+}
+
+export interface SendResponse {
+  response: {
+    raw: string;
+    statusCode: number;
+    durationMs: number;
+  };
+  history: HistoryView;
+}
+
+// Site Map
+export interface SitemapPath {
+  path: string;
+  methods: string[];
+  count: number;
+  inScope: boolean;
+  note?: string;
+  tags?: string[];
+}
+
+export interface SitemapHost {
+  host: string;
+  count: number;
+  paths: SitemapPath[];
+}
+
+export interface SitemapNoteInput {
+  host: string;
+  path: string;
+  note: string;
+  tags: string[];
+}

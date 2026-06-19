@@ -38,6 +38,26 @@ const ENABLED: NavItem[] = [
     icon: <Icon d="M4 12h16M4 12l4-4M4 12l4 4M20 6v12" />,
   },
   {
+    label: 'Site Map',
+    to: '/sitemap',
+    icon: <Icon d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15" />,
+  },
+  {
+    label: 'Repeater',
+    to: '/repeater',
+    icon: <Icon d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" />,
+  },
+  {
+    label: 'Decoder',
+    to: '/decoder',
+    icon: <Icon d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
+  },
+  {
+    label: 'Comparer',
+    to: '/comparer',
+    icon: <Icon d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M12 3v18" />,
+  },
+  {
     label: 'Settings',
     to: '/settings',
     icon: (
@@ -46,17 +66,7 @@ const ENABLED: NavItem[] = [
   },
 ];
 
-const DISABLED = [
-  'Repeater',
-  'Intruder',
-  'Scanner',
-  'Decoder',
-  'Comparer',
-  'Sequencer',
-  'Crawler',
-  'OOB',
-  'AI',
-];
+const DISABLED = ['Intruder', 'Scanner', 'Sequencer', 'Crawler', 'OOB', 'AI'];
 
 function ConnectionDot() {
   const status = useConnectionStore((s) => s.status);

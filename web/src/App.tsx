@@ -3,6 +3,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProxyPage } from './pages/ProxyPage';
+import { SiteMapPage } from './pages/SiteMapPage';
+import { RepeaterPage } from './pages/RepeaterPage';
+import { DecoderPage } from './pages/DecoderPage';
+import { ComparerPage } from './pages/ComparerPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useProxyStore } from './store/proxyStore';
@@ -26,6 +30,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/proxy" element={<ProxyPage />} />
+          <Route path="/sitemap" element={<SiteMapPage />} />
+          <Route path="/repeater" element={<RepeaterPage />} />
+          <Route path="/decoder" element={<DecoderPage />} />
+          <Route path="/comparer" element={<ComparerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
