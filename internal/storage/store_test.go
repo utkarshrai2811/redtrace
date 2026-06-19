@@ -134,6 +134,31 @@ func TestDeleteRequest(t *testing.T) {
 	}
 }
 
+func TestClearRequests(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	for range 3 {
+		if err := db.StoreExchange(ctx, sampleExchange(NewID(), "GET", "example.com", "/", "needle", 200)); err != nil {
+			t.Fatalf("store: %v", err)
+		}
+	}
+	if _, total, _ := db.ListRequests(ctx, RequestFilter{}); total != 3 {
+		t.Fatalf("setup total=%d, want 3", total)
+	}
+
+	if err := db.ClearRequests(ctx); err != nil {
+		t.Fatalf("ClearRequests: %v", err)
+	}
+	if _, total, err := db.ListRequests(ctx, RequestFilter{}); err != nil || total != 0 {
+		t.Errorf("after clear: total=%d err=%v, want 0", total, err)
+	}
+	// The FTS index must be cleared too.
+	if _, n, _ := db.ListRequests(ctx, RequestFilter{Contains: "needle"}); n != 0 {
+		t.Errorf("search index not cleared: %d hits remain", n)
+	}
+}
+
 func TestNewID_Unique(t *testing.T) {
 	seen := make(map[string]bool)
 	for range 1000 {

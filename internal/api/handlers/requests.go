@@ -96,6 +96,15 @@ func (a *API) DeleteRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ClearRequests handles DELETE /api/requests, clearing the entire history.
+func (a *API) ClearRequests(w http.ResponseWriter, r *http.Request) {
+	if err := a.Store.ClearRequests(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "clear_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Hosts handles GET /api/hosts, returning the distinct observed hosts.
 func (a *API) Hosts(w http.ResponseWriter, r *http.Request) {
 	hosts, err := a.Store.Hosts(r.Context())

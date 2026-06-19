@@ -27,6 +27,7 @@ type harness struct {
 	db       *storage.DB
 	rules    *intercept.RuleSet
 	scope    *scope.Scope
+	ic       *intercept.Interceptor
 	captured chan storage.RequestSummary
 }
 
@@ -76,7 +77,7 @@ func startProxy(t *testing.T) *harness {
 	}
 	t.Cleanup(client.CloseIdleConnections)
 
-	return &harness{proxyURL: proxyURL, client: client, db: db, rules: rules, scope: sc, captured: captured}
+	return &harness{proxyURL: proxyURL, client: client, db: db, rules: rules, scope: sc, ic: ic, captured: captured}
 }
 
 func (h *harness) wait(t *testing.T) storage.RequestSummary {
@@ -170,6 +171,38 @@ func TestProxy_MatchReplaceResponse(t *testing.T) {
 	_ = resp.Body.Close()
 	if string(body) != "the secret is REDACTED" {
 		t.Fatalf("match&replace not applied: %q", body)
+	}
+	h.wait(t)
+}
+
+func TestProxy_InterceptOnlyHoldsInScope(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer origin.Close()
+
+	h := startProxy(t)
+	// Only example.com is in scope; the loopback origin is out of scope.
+	if err := h.scope.SetRules([]scope.Rule{{
+		ID: "1", Enabled: true, Kind: scope.Include, Matcher: scope.MatchHost, Value: "example.com",
+	}}); err != nil {
+		t.Fatalf("scope: %v", err)
+	}
+	h.ic.SetEnabled(true)
+
+	// With interception on, an out-of-scope request must pass straight through
+	// (never held) rather than flooding the queue.
+	resp, err := h.client.Get(origin.URL + "/")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != "ok" {
+		t.Fatalf("body = %q, want ok", body)
+	}
+	if n := len(h.ic.Queue()); n != 0 {
+		t.Errorf("out-of-scope request was held (queue=%d); intercept must respect scope", n)
 	}
 	h.wait(t)
 }

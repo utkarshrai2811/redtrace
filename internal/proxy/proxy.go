@@ -255,18 +255,21 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 
 	reqBody = p.rules.ApplyRequest(req, reqBody)
 
-	// Manual interception of the request.
+	// Manual interception of the request — only for in-scope traffic, so
+	// background and out-of-scope requests are never held in the queue.
 	rawReq := rawRequest(req, reqBody)
-	switch d := p.interceptor.Hold(ctx, &intercept.Held{
-		Direction: intercept.DirRequest, Method: req.Method, URL: req.URL.String(), Host: host, Raw: rawReq,
-	}); d.Action {
-	case intercept.ActionDrop:
-		return synthResponse(http.StatusGatewayTimeout, "Request dropped by RedTrace"), nil
-	case intercept.ActionForward:
-		if d.Raw != nil {
-			if nr, nb, err := reparseRequest(d.Raw, scheme, authority); err == nil {
-				req, reqBody = nr, nb
-				rawReq = d.Raw
+	if inScope {
+		switch d := p.interceptor.Hold(ctx, &intercept.Held{
+			Direction: intercept.DirRequest, Method: req.Method, URL: req.URL.String(), Host: host, Raw: rawReq,
+		}); d.Action {
+		case intercept.ActionDrop:
+			return synthResponse(http.StatusGatewayTimeout, "Request dropped by RedTrace"), nil
+		case intercept.ActionForward:
+			if d.Raw != nil {
+				if nr, nb, err := reparseRequest(d.Raw, scheme, authority); err == nil {
+					req, reqBody = nr, nb
+					rawReq = d.Raw
+				}
 			}
 		}
 	}
@@ -285,18 +288,20 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 	respBody = decompress(resp, respBody)
 	respBody = p.rules.ApplyResponse(resp, respBody)
 
-	// Manual interception of the response.
+	// Manual interception of the response (in-scope traffic only).
 	rawResp := rawResponse(resp, respBody)
-	switch d := p.interceptor.Hold(ctx, &intercept.Held{
-		Direction: intercept.DirResponse, StatusCode: resp.StatusCode, URL: req.URL.String(), Host: host, Raw: rawResp,
-	}); d.Action {
-	case intercept.ActionDrop:
-		return synthResponse(http.StatusGatewayTimeout, "Response dropped by RedTrace"), nil
-	case intercept.ActionForward:
-		if d.Raw != nil {
-			if nr, nb, err := reparseResponse(d.Raw, req); err == nil {
-				resp, respBody = nr, nb
-				rawResp = d.Raw
+	if inScope {
+		switch d := p.interceptor.Hold(ctx, &intercept.Held{
+			Direction: intercept.DirResponse, StatusCode: resp.StatusCode, URL: req.URL.String(), Host: host, Raw: rawResp,
+		}); d.Action {
+		case intercept.ActionDrop:
+			return synthResponse(http.StatusGatewayTimeout, "Response dropped by RedTrace"), nil
+		case intercept.ActionForward:
+			if d.Raw != nil {
+				if nr, nb, err := reparseResponse(d.Raw, req); err == nil {
+					resp, respBody = nr, nb
+					rawResp = d.Raw
+				}
 			}
 		}
 	}

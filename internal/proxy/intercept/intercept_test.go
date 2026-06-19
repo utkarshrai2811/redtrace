@@ -78,6 +78,42 @@ func TestInterceptor_DisablingForwardsHeld(t *testing.T) {
 	}
 }
 
+func TestInterceptor_DrainAll(t *testing.T) {
+	var n int64
+	ic := NewInterceptor(func() string { return strconv.FormatInt(atomic.AddInt64(&n, 1), 10) })
+	ic.SetEnabled(true)
+
+	results := make(chan Decision, 3)
+	for range 3 {
+		go func() { results <- ic.Hold(context.Background(), &Held{Direction: DirRequest}) }()
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(ic.Queue()) < 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(ic.Queue()) != 3 {
+		t.Fatalf("expected 3 held, got %d", len(ic.Queue()))
+	}
+
+	if drained := ic.DrainAll(ActionForward); drained != 3 {
+		t.Errorf("DrainAll returned %d, want 3", drained)
+	}
+	for range 3 {
+		select {
+		case d := <-results:
+			if d.Action != ActionForward {
+				t.Errorf("got %q, want forward", d.Action)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("Hold did not return after DrainAll")
+		}
+	}
+	if len(ic.Queue()) != 0 {
+		t.Errorf("queue not empty after DrainAll: %d", len(ic.Queue()))
+	}
+}
+
 func TestRuleSet_ApplyRequestHeaderAndBody(t *testing.T) {
 	rs := NewRuleSet()
 	err := rs.SetRules([]Rule{

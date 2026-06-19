@@ -161,6 +161,28 @@ func (i *Interceptor) Queue() []*Held {
 	return out
 }
 
+// DrainAll resolves every queued item with the given action (forward or drop)
+// and returns how many were drained.
+func (i *Interceptor) DrainAll(action Action) int {
+	i.mu.Lock()
+	held := make([]*Held, 0, len(i.order))
+	for _, id := range i.order {
+		held = append(held, i.queue[id])
+	}
+	i.queue = make(map[string]*Held)
+	i.order = nil
+	notify := i.notify
+	i.mu.Unlock()
+
+	for _, h := range held {
+		h.decision <- Decision{Action: action}
+	}
+	if notify != nil {
+		notify()
+	}
+	return len(held)
+}
+
 // Resolve delivers a decision to a held item.
 func (i *Interceptor) Resolve(id string, d Decision) error {
 	i.mu.Lock()

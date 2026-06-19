@@ -222,6 +222,23 @@ func (db *DB) DeleteRequest(ctx context.Context, id string) error {
 	return tx.Commit()
 }
 
+// ClearRequests deletes all captured requests, their responses, and the search
+// index, returning the store to an empty state.
+func (db *DB) ClearRequests(ctx context.Context) error {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range []string{`DELETE FROM responses`, `DELETE FROM requests`, `DELETE FROM search_index`} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("clear requests: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // Hosts returns the distinct hosts observed, ordered alphabetically. Useful for
 // populating the site map and host filter.
 func (db *DB) Hosts(ctx context.Context) ([]string, error) {

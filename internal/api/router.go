@@ -18,6 +18,7 @@ func (s *Server) routes() http.Handler {
 
 	// Proxy history
 	mux.HandleFunc("GET /api/requests", a.ListRequests)
+	mux.HandleFunc("DELETE /api/requests", a.ClearRequests)
 	mux.HandleFunc("GET /api/requests/{id}", a.GetRequest)
 	mux.HandleFunc("DELETE /api/requests/{id}", a.DeleteRequest)
 	mux.HandleFunc("POST /api/requests/{id}/send-to-repeater", a.SendToRepeater)
@@ -31,6 +32,8 @@ func (s *Server) routes() http.Handler {
 	// Interception
 	mux.HandleFunc("GET /api/intercept", a.InterceptStatus)
 	mux.HandleFunc("PUT /api/intercept", a.UpdateIntercept)
+	mux.HandleFunc("POST /api/intercept/forward-all", a.ForwardAll)
+	mux.HandleFunc("POST /api/intercept/drop-all", a.DropAll)
 	mux.HandleFunc("POST /api/intercept/{id}/forward", a.ForwardItem)
 	mux.HandleFunc("POST /api/intercept/{id}/drop", a.DropItem)
 	mux.HandleFunc("GET /api/intercept/rules", a.GetRules)

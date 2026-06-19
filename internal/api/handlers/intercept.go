@@ -82,6 +82,20 @@ func (a *API) resolve(w http.ResponseWriter, id string, d intercept.Decision) {
 	writeJSON(w, http.StatusOK, a.interceptState())
 }
 
+// ForwardAll handles POST /api/intercept/forward-all, draining the queue.
+func (a *API) ForwardAll(w http.ResponseWriter, r *http.Request) {
+	a.Interceptor.DrainAll(intercept.ActionForward)
+	a.PublishIntercept()
+	writeJSON(w, http.StatusOK, a.interceptState())
+}
+
+// DropAll handles POST /api/intercept/drop-all, dropping the whole queue.
+func (a *API) DropAll(w http.ResponseWriter, r *http.Request) {
+	a.Interceptor.DrainAll(intercept.ActionDrop)
+	a.PublishIntercept()
+	writeJSON(w, http.StatusOK, a.interceptState())
+}
+
 // GetRules handles GET /api/intercept/rules.
 func (a *API) GetRules(w http.ResponseWriter, r *http.Request) {
 	rules := a.Rules.Rules()
