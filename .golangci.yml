@@ -1,9 +1,7 @@
-run:
-  timeout: 5m
-  tests: true
+version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
@@ -13,21 +11,26 @@ linters:
     - exhaustive
     - ineffassign
     - misspell
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        # G402: TLS InsecureSkipVerify is intentional for an intercepting proxy.
+        - G402
+        # G404: non-crypto rand is acceptable for jitter/labels, not secrets.
+        - G404
+  exclusions:
+    generated: lax
+    presets:
+      # Restores the v1 default of not flagging fmt.*/bytes.Buffer writes etc.
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
 
-linters-settings:
-  exhaustive:
-    default-signifies-exhaustive: true
-  gosec:
-    excludes:
-      # G402: TLS InsecureSkipVerify is intentional for an intercepting proxy.
-      - G402
-      # G404: non-crypto rand is acceptable for jitter/labels, not secrets.
-      - G404
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-  max-issues-per-linter: 0
-  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports

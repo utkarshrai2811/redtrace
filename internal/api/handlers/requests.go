@@ -36,14 +36,14 @@ func (a *API) ListRequests(w http.ResponseWriter, r *http.Request) {
 		perPage = 50
 	}
 
-	min, max := parseStatus(q.Get("status"))
+	statusMin, statusMax := parseStatus(q.Get("status"))
 	filter := storage.RequestFilter{
 		Method:      q.Get("method"),
 		Host:        q.Get("host"),
 		MimeType:    q.Get("mime"),
 		Contains:    q.Get("q"),
-		StatusMin:   min,
-		StatusMax:   max,
+		StatusMin:   statusMin,
+		StatusMax:   statusMax,
 		InScopeOnly: q.Get("scope") == "in",
 		Limit:       perPage,
 		Offset:      (page - 1) * perPage,
