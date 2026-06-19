@@ -14,6 +14,7 @@ import (
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
+	"github.com/utkarshrai2811/redtrace/internal/repeater"
 	"github.com/utkarshrai2811/redtrace/internal/scope"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
@@ -50,6 +51,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Interceptor: ic,
 		Authority:   authority,
 		Hub:         hub,
+		Repeater:    repeater.New(),
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -118,11 +119,43 @@ func (a *API) Hosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, hosts)
 }
 
-// SendToRepeater and SendToIntruder are wired now but land in later phases.
+// SendToRepeater handles POST /api/requests/{id}/send-to-repeater, creating a
+// Repeater tab seeded from a captured request.
 func (a *API) SendToRepeater(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "not_implemented", "Repeater arrives in Phase 2")
+	ex, err := a.Store.GetExchange(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such request")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		return
+	}
+	req := ex.Request
+	port := req.Port
+	if port == 0 {
+		if req.Scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+	tab := &models.RepeaterTab{
+		ID:          storage.NewID(),
+		Name:        req.Method + " " + req.Path,
+		Scheme:      req.Scheme,
+		Host:        fmt.Sprintf("%s:%d", req.Host, port),
+		Raw:         req.Raw,
+		HTTPVersion: "HTTP/1.1",
+	}
+	if err := a.Store.CreateRepeaterTab(r.Context(), tab); err != nil {
+		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toTabView(tab))
 }
 
+// SendToIntruder is wired but lands in Phase 3.
 func (a *API) SendToIntruder(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotImplemented, "not_implemented", "Intruder arrives in Phase 3")
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
+	"github.com/utkarshrai2811/redtrace/internal/repeater"
 	"github.com/utkarshrai2811/redtrace/internal/scope"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
@@ -26,6 +27,7 @@ type API struct {
 	Interceptor *intercept.Interceptor
 	Authority   *cert.Authority
 	Hub         *Hub
+	Repeater    *repeater.Engine
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger
