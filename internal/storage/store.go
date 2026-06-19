@@ -118,9 +118,19 @@ func (db *DB) StoreExchange(ctx context.Context, ex *models.Exchange) error {
 }
 
 // ListRequests returns a filtered, paginated page of history rows together with
-// the total number of rows matching the filter (ignoring pagination).
+// the total number of rows matching the filter (ignoring pagination). When a
+// "contains" search is present it uses the FTS5 index; if that rejects the
+// input as a MATCH query it transparently retries with a LIKE scan.
 func (db *DB) ListRequests(ctx context.Context, f RequestFilter) ([]RequestSummary, int, error) {
-	where, args := buildFilter(f)
+	rows, total, err := db.listRequests(ctx, f, false)
+	if err != nil && strings.TrimSpace(f.Contains) != "" {
+		return db.listRequests(ctx, f, true)
+	}
+	return rows, total, err
+}
+
+func (db *DB) listRequests(ctx context.Context, f RequestFilter, forceLike bool) ([]RequestSummary, int, error) {
+	where, args := buildFilter(f, forceLike)
 
 	var total int
 	countQ := listCountBase + where //nolint:gosec // G202: WHERE is constant fragments; values are bound parameters
@@ -258,7 +268,7 @@ func (db *DB) Hosts(ctx context.Context) ([]string, error) {
 	return hosts, rows.Err()
 }
 
-func buildFilter(f RequestFilter) (string, []any) {
+func buildFilter(f RequestFilter, forceLike bool) (string, []any) {
 	var conds []string
 	var args []any
 
@@ -286,13 +296,17 @@ func buildFilter(f RequestFilter) (string, []any) {
 		conds = append(conds, "r.in_scope = 1")
 	}
 	if c := strings.TrimSpace(f.Contains); c != "" {
-		if len(c) >= 3 {
+		switch {
+		case !forceLike && len(c) >= 3:
 			// trigram FTS handles arbitrary substring matches >= 3 chars.
 			conds = append(conds, "r.id IN (SELECT request_id FROM search_index WHERE search_index MATCH ?)")
 			args = append(args, `"`+strings.ReplaceAll(c, `"`, `""`)+`"`)
-		} else {
-			conds = append(conds, "r.url LIKE '%' || ? || '%'")
-			args = append(args, c)
+		default:
+			// Fallback (short query, or FTS rejected the input): a reliable LIKE
+			// scan over the base tables. CAST(raw AS TEXT) makes the BLOB bodies
+			// matchable; this never errors on arbitrary input.
+			conds = append(conds, "(r.url LIKE '%'||?||'%' OR CAST(r.raw AS TEXT) LIKE '%'||?||'%' OR CAST(resp.raw AS TEXT) LIKE '%'||?||'%')")
+			args = append(args, c, c, c)
 		}
 	}
 

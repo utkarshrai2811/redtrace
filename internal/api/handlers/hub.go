@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,9 +55,28 @@ func NewHub() *Hub {
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 4096,
-	// The API binds to loopback by default; allow any origin so the local UI
-	// (possibly on a different dev port) can connect.
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Accept same-origin and loopback origins (the local UI / dev server), plus
+	// non-browser clients that send no Origin. A page on any other site is
+	// rejected so it can't open the traffic stream.
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		if strings.EqualFold(u.Host, r.Host) {
+			return true
+		}
+		host := u.Hostname()
+		if strings.EqualFold(host, "localhost") {
+			return true
+		}
+		ip := net.ParseIP(host)
+		return ip != nil && ip.IsLoopback()
+	},
 }
 
 // ServeWS upgrades the connection and registers it with the hub.

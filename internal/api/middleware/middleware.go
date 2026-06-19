@@ -4,7 +4,10 @@ package middleware
 import (
 	"crypto/subtle"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -16,12 +19,14 @@ func Chain(h http.Handler, mw ...func(http.Handler) http.Handler) http.Handler {
 	return h
 }
 
-// CORS allows the local web UI (served from a different dev port) to call the
-// API. Credentials are not used, so reflecting the origin is safe here.
+// CORS reflects the Origin only for loopback origins (the local web UI / dev
+// server). A page on any other site receives no Access-Control-Allow-Origin, so
+// the browser blocks it from reading the API — preventing a visited website
+// from driving the proxy.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin != "" {
+		if origin != "" && isLoopbackOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
@@ -33,6 +38,44 @@ func CORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// LocalGuard blocks requests whose Host header is not a loopback address when no
+// auth token is configured. This defeats DNS-rebinding against the default
+// loopback bind; when a token is set (an intentional remote bind), the token is
+// the gate and any Host is allowed.
+func LocalGuard(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if token == "" && !isLoopbackHost(r.Host) {
+				http.Error(w, `{"error":{"code":"forbidden","message":"non-loopback Host blocked; set an auth token to allow remote access"}}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// isLoopbackHost reports whether host (optionally host:port) is localhost or a
+// loopback IP.
+func isLoopbackHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return isLoopbackHost(u.Host)
 }
 
 type statusRecorder struct {

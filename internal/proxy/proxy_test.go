@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,5 +230,105 @@ func TestProxy_ScopeTagging(t *testing.T) {
 
 	if s := h.wait(t); s.InScope {
 		t.Errorf("expected out-of-scope, got inScope=true: %+v", s)
+	}
+}
+
+func TestProxy_HEADPreservesContentLength(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", "12345")
+			return
+		}
+		_, _ = io.WriteString(w, "full body")
+	}))
+	defer origin.Close()
+
+	h := startProxy(t)
+	resp, err := h.client.Head(origin.URL + "/")
+	if err != nil {
+		t.Fatalf("HEAD: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if len(body) != 0 {
+		t.Errorf("HEAD body should be empty, got %d bytes", len(body))
+	}
+	if got := resp.Header.Get("Content-Length"); got != "12345" {
+		t.Errorf("HEAD Content-Length = %q, want 12345 (must not be fabricated to 0)", got)
+	}
+	h.wait(t)
+}
+
+func TestProxy_204HasNoContentLength(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer origin.Close()
+
+	h := startProxy(t)
+	resp, err := h.client.Get(origin.URL + "/")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+	if len(body) != 0 {
+		t.Errorf("204 body should be empty, got %d bytes", len(body))
+	}
+	if got := resp.Header.Get("Content-Length"); got != "" {
+		t.Errorf("204 must not carry a Content-Length, got %q", got)
+	}
+	h.wait(t)
+}
+
+func TestProxy_LargeBodyStreamedIntact(t *testing.T) {
+	old := maxCapturedBody
+	maxCapturedBody = 1024
+	defer func() { maxCapturedBody = old }()
+
+	const size = 5000
+	payload := strings.Repeat("A", size)
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer origin.Close()
+
+	h := startProxy(t)
+	resp, err := h.client.Get(origin.URL + "/big")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if len(body) != size || string(body) != payload {
+		t.Fatalf("client received %d bytes, want the full %d (body must not be truncated)", len(body), size)
+	}
+
+	s := h.wait(t)
+	ex, err := h.db.GetExchange(context.Background(), s.ID)
+	if err != nil {
+		t.Fatalf("get exchange: %v", err)
+	}
+	if ex.Response == nil || ex.Response.BodySize >= size {
+		t.Errorf("stored capture should be truncated to the cap, got %+v", ex.Response)
+	}
+}
+
+func TestReadCapped(t *testing.T) {
+	pre, full, trunc := readCapped(strings.NewReader("hello"), 1024)
+	if trunc || full != nil || string(pre) != "hello" {
+		t.Errorf("under cap: pre=%q full=%v trunc=%v", pre, full, trunc)
+	}
+
+	pre, full, trunc = readCapped(strings.NewReader("abcdefghij"), 4)
+	if !trunc || full == nil || string(pre) != "abcd" {
+		t.Fatalf("over cap: pre=%q trunc=%v", pre, trunc)
+	}
+	all, _ := io.ReadAll(full)
+	if string(all) != "abcdefghij" {
+		t.Errorf("full replay = %q, want abcdefghij", all)
 	}
 }

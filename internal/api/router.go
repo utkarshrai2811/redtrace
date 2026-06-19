@@ -46,6 +46,7 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/", s.spa)
 
 	return middleware.Chain(mux,
+		middleware.LocalGuard(s.token),
 		middleware.CORS,
 		middleware.Logger(s.log),
 		middleware.Auth(s.token),

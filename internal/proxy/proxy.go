@@ -7,6 +7,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"compress/zlib"
 	"context"
@@ -32,7 +33,9 @@ import (
 )
 
 // maxCapturedBody bounds how many body bytes are buffered/stored per message.
-const maxCapturedBody = 10 * 1024 * 1024
+// Bodies larger than this are streamed to the client verbatim (see readCapped).
+// It is a var only so tests can lower it.
+var maxCapturedBody = 10 * 1024 * 1024
 
 // hopByHop are connection-specific headers that must not be forwarded.
 var hopByHop = []string{
@@ -206,9 +209,22 @@ func (p *Proxy) serveTunnel(conn net.Conn, authority, scheme string) {
 			return
 		}
 
-		resp, respBody := p.handle(req.Context(), req, body, scheme, authority)
-		if err := writeResponse(conn, resp, respBody); err != nil {
+		resp, respBody, stream := p.handle(req.Context(), req, body, scheme, authority)
+		if _, err := conn.Write(rawResponseHead(resp)); err != nil {
+			if stream != nil {
+				_ = resp.Body.Close()
+			}
 			return
+		}
+		if stream != nil {
+			_, _ = io.Copy(conn, stream)
+			_ = resp.Body.Close()
+			return // streamed body: framing isn't keep-alive-safe, so close
+		}
+		if len(respBody) > 0 {
+			if _, err := conn.Write(respBody); err != nil {
+				return
+			}
 		}
 		if req.Close || resp.Close {
 			return
@@ -231,20 +247,28 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, respBody := p.handle(r.Context(), r, body, "http", authority)
+	resp, respBody, stream := p.handle(r.Context(), r, body, "http", authority)
+	if stream != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	for k := range hopByHop {
 		resp.Header.Del(hopByHop[k])
 	}
 	copyHeader(w.Header(), resp.Header)
-	w.Header().Set("Content-Length", strconv.Itoa(len(respBody)))
 	w.WriteHeader(resp.StatusCode)
-	_, _ = w.Write(respBody)
+	if stream != nil {
+		_, _ = io.Copy(w, stream)
+	} else if len(respBody) > 0 {
+		_, _ = w.Write(respBody)
+	}
 }
 
-// handle runs the capture pipeline for one request and returns the response to
-// send back to the client along with its (possibly rewritten) body.
-func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, scheme, authority string) (*http.Response, []byte) {
+// handle runs the capture pipeline for one request. It returns the response to
+// send to the client and either a body to write (respBody) or, for bodies too
+// large to buffer, a stream to copy verbatim (stream != nil). respBody is nil
+// for bodyless responses (HEAD/204/304/1xx).
+func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, scheme, authority string) (*http.Response, []byte, io.Reader) {
 	host, port := splitAuthority(authority, scheme)
 	req.URL.Scheme = scheme
 	req.URL.Host = authority
@@ -263,7 +287,7 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 			Direction: intercept.DirRequest, Method: req.Method, URL: req.URL.String(), Host: host, Raw: rawReq,
 		}); d.Action {
 		case intercept.ActionDrop:
-			return synthResponse(http.StatusGatewayTimeout, "Request dropped by RedTrace"), nil
+			return synthResponse(http.StatusGatewayTimeout, "Request dropped by RedTrace")
 		case intercept.ActionForward:
 			if d.Raw != nil {
 				if nr, nb, err := reparseRequest(d.Raw, scheme, authority); err == nil {
@@ -280,12 +304,35 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 	duration := time.Since(start)
 	if err != nil {
 		p.logger.Debug("upstream error", "url", req.URL.String(), "err", err)
-		return synthResponse(http.StatusBadGateway, "RedTrace upstream error: "+err.Error()), nil
+		return synthResponse(http.StatusBadGateway, "RedTrace upstream error: "+err.Error())
 	}
 
-	respBody := readBody(resp.Body)
+	// Bodyless responses must carry neither a body nor a fabricated length.
+	if bodyless(req.Method, resp.StatusCode) {
+		_ = resp.Body.Close()
+		// 204/304/1xx forbid Content-Length; HEAD keeps the origin's value.
+		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified ||
+			(resp.StatusCode >= 100 && resp.StatusCode < 200) {
+			resp.Header.Del("Content-Length")
+		}
+		resp.Header.Del("Transfer-Encoding")
+		p.persist(req, reqBody, rawReq, resp, nil, rawResponse(resp, nil), scheme, host, port, inScope, duration)
+		return resp, nil, nil
+	}
+
+	prefix, full, truncated := readCapped(resp.Body, maxCapturedBody)
+	if truncated {
+		// Too large to buffer: forward verbatim by streaming (origin framing
+		// intact), store only the captured prefix, and close after — match &
+		// replace and response interception don't apply to a streamed body.
+		resp.Close = true
+		resp.Header.Set("Connection", "close")
+		p.persist(req, reqBody, rawReq, resp, prefix, rawResponse(resp, prefix), scheme, host, port, inScope, duration)
+		return resp, nil, full
+	}
 	_ = resp.Body.Close()
-	respBody = decompress(resp, respBody)
+
+	respBody := decompress(resp, prefix)
 	respBody = p.rules.ApplyResponse(resp, respBody)
 
 	// Manual interception of the response (in-scope traffic only).
@@ -295,7 +342,7 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 			Direction: intercept.DirResponse, StatusCode: resp.StatusCode, URL: req.URL.String(), Host: host, Raw: rawResp,
 		}); d.Action {
 		case intercept.ActionDrop:
-			return synthResponse(http.StatusGatewayTimeout, "Response dropped by RedTrace"), nil
+			return synthResponse(http.StatusGatewayTimeout, "Response dropped by RedTrace")
 		case intercept.ActionForward:
 			if d.Raw != nil {
 				if nr, nb, err := reparseResponse(d.Raw, req); err == nil {
@@ -311,7 +358,7 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 	// Normalize the response for writing back to the client.
 	resp.Header.Del("Transfer-Encoding")
 	resp.Header.Set("Content-Length", strconv.Itoa(len(respBody)))
-	return resp, respBody
+	return resp, respBody, nil
 }
 
 func (p *Proxy) persist(req *http.Request, reqBody, rawReq []byte, resp *http.Response, respBody, rawResp []byte, scheme, host string, port int, inScope bool, dur time.Duration) {
@@ -398,6 +445,13 @@ func (p *Proxy) upgradeOverResponseWriter(w http.ResponseWriter, r *http.Request
 
 func prepareOutbound(req *http.Request, body []byte) {
 	req.RequestURI = ""
+	// Drop any per-connection headers the client named in Connection, then the
+	// hop-by-hop set itself.
+	for _, tok := range strings.Split(req.Header.Get("Connection"), ",") {
+		if name := strings.TrimSpace(tok); name != "" {
+			req.Header.Del(name)
+		}
+	}
 	for _, h := range hopByHop {
 		req.Header.Del(h)
 	}
@@ -409,8 +463,37 @@ func readBody(r io.Reader) []byte {
 	if r == nil {
 		return nil
 	}
-	b, _ := io.ReadAll(io.LimitReader(r, maxCapturedBody))
+	b, _ := io.ReadAll(io.LimitReader(r, int64(maxCapturedBody)))
 	return b
+}
+
+// bodyless reports whether the response must not carry a message body, per
+// RFC 9110 (HEAD requests, and 1xx/204/304 status codes).
+func bodyless(method string, status int) bool {
+	return method == http.MethodHead ||
+		status == http.StatusNoContent ||
+		status == http.StatusNotModified ||
+		(status >= 100 && status < 200)
+}
+
+// readCapped reads up to limit bytes from r for capture/storage. If r holds
+// more than limit bytes it returns truncated=true together with a reader that
+// replays the captured prefix followed by the untouched remainder, so the body
+// can be forwarded verbatim without buffering all of it.
+func readCapped(r io.Reader, limit int) (prefix []byte, full io.Reader, truncated bool) {
+	if r == nil {
+		return nil, nil, false
+	}
+	prefix, _ = io.ReadAll(io.LimitReader(r, int64(limit)))
+	if len(prefix) < limit {
+		return prefix, nil, false
+	}
+	var probe [1]byte
+	n, _ := io.ReadFull(r, probe[:])
+	if n == 0 {
+		return prefix, nil, false
+	}
+	return prefix, io.MultiReader(bytes.NewReader(prefix), bytes.NewReader(probe[:n]), r), true
 }
 
 func decompress(resp *http.Response, body []byte) []byte {
@@ -424,17 +507,19 @@ func decompress(resp *http.Response, body []byte) []byte {
 		}
 		reader = zr
 	case "deflate":
-		zr, err := zlib.NewReader(bytes.NewReader(body))
-		if err != nil {
-			return body
+		// Prefer zlib-wrapped DEFLATE; fall back to raw DEFLATE which some
+		// servers send despite the spec.
+		if zr, err := zlib.NewReader(bytes.NewReader(body)); err == nil {
+			reader = zr
+		} else {
+			reader = flate.NewReader(bytes.NewReader(body))
 		}
-		reader = zr
 	default:
 		return body
 	}
 	defer func() { _ = reader.Close() }()
 
-	out, err := io.ReadAll(io.LimitReader(reader, maxCapturedBody))
+	out, err := io.ReadAll(io.LimitReader(reader, int64(maxCapturedBody)))
 	if err != nil {
 		return body
 	}
@@ -507,11 +592,22 @@ func writeHeaders(b *bytes.Buffer, h http.Header, skip string) {
 	}
 }
 
-func writeResponse(conn net.Conn, resp *http.Response, body []byte) error {
-	resp.Header.Del("Transfer-Encoding")
-	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	_, err := conn.Write(rawResponse(resp, body))
-	return err
+// rawResponseHead serializes the status line and headers (no body), for writing
+// a response whose body is sent separately (buffered bytes or a stream).
+func rawResponseHead(resp *http.Response) []byte {
+	var b bytes.Buffer
+	proto := resp.Proto
+	if proto == "" {
+		proto = "HTTP/1.1"
+	}
+	status := resp.Status
+	if status == "" {
+		status = fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+	fmt.Fprintf(&b, "%s %s\r\n", proto, status)
+	writeHeaders(&b, resp.Header, "")
+	b.WriteString("\r\n")
+	return b.Bytes()
 }
 
 func copyHeader(dst, src http.Header) {
@@ -547,20 +643,26 @@ func reparseResponse(raw []byte, req *http.Request) (*http.Response, []byte, err
 	return resp, body, nil
 }
 
-func synthResponse(code int, msg string) *http.Response {
-	body := []byte(msg)
+// synthResponse builds a RedTrace-generated response (drops, upstream errors).
+// It returns the (resp, body, stream) tuple handle() uses and marks the
+// connection to close so the client never mis-frames a synthetic reply.
+func synthResponse(code int, msg string) (*http.Response, []byte, io.Reader) {
+	body := []byte(msg + "\n")
 	return &http.Response{
 		StatusCode: code,
 		Status:     fmt.Sprintf("%d %s", code, http.StatusText(code)),
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
+		Close:      true,
 		Header: http.Header{
-			"Content-Type": {"text/plain; charset=utf-8"},
+			"Content-Type":   {"text/plain; charset=utf-8"},
+			"Content-Length": {strconv.Itoa(len(body))},
+			"Connection":     {"close"},
 		},
 		Body:          io.NopCloser(bytes.NewReader(body)),
 		ContentLength: int64(len(body)),
-	}
+	}, body, nil
 }
 
 func splitAuthority(authority, scheme string) (host string, port int) {

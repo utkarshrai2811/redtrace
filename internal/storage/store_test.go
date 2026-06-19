@@ -101,6 +101,8 @@ func TestListRequests_Filters(t *testing.T) {
 		{"status class 3xx", RequestFilter{StatusMin: 300, StatusMax: 399}, 1},
 		{"contains fts", RequestFilter{Contains: "secret-token"}, 1},
 		{"contains miss", RequestFilter{Contains: "nonexistent-string"}, 0},
+		{"contains short uses like", RequestFilter{Contains: "se"}, 1},
+		{"contains special char no error", RequestFilter{Contains: `"`}, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
