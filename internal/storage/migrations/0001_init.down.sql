@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS scope_rules;
+DROP TABLE IF EXISTS intercept_rules;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS findings;
+DROP TABLE IF EXISTS responses;
+DROP TABLE IF EXISTS requests;
+DROP TABLE IF EXISTS projects;
