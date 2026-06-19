@@ -5,7 +5,7 @@ set up and the conventions we follow.
 
 ## Development setup
 
-Prerequisites: Go 1.24+, Node 20+, and `make`.
+Prerequisites: Go 1.25+, Node 20+, and `make`.
 
 ```bash
 git clone https://github.com/utkarshrai2811/redtrace.git

@@ -7,7 +7,7 @@
 **Open-source web security testing platform — a free alternative to Burp Suite Pro.**
 
 [![CI](https://github.com/utkarshrai2811/redtrace/actions/workflows/ci.yml/badge.svg)](https://github.com/utkarshrai2811/redtrace/actions/workflows/ci.yml)
-[![Go Reference](https://img.shields.io/badge/go-1.24%2B-00ADD8?logo=go)](https://go.dev)
+[![Go Reference](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/utkarshrai2811/redtrace?style=social)](https://github.com/utkarshrai2811/redtrace/stargazers)
 
@@ -47,14 +47,19 @@ web UI.
 
 ### From source
 
+Requires Go 1.25+ and Node 20+.
+
 ```bash
 git clone https://github.com/utkarshrai2811/redtrace.git
 cd redtrace
-make build
+make all          # build the web UI and the binary (embeds the UI)
 ./bin/redtrace serve
 ```
 
 The proxy listens on `127.0.0.1:8080` and the UI on `http://127.0.0.1:9090`.
+(`make build` alone builds just the Go binary with a placeholder UI; use
+`make all` or `make web-build` to embed the real interface. For live frontend
+development, `make dev` runs the backend plus the Vite dev server.)
 
 ### Docker
 
