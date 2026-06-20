@@ -106,8 +106,8 @@ RedTrace is built in phases. See [`docs/phases/`](docs/phases) for detail.
 2. Core analysis tools (Repeater, Decoder, Comparer, Site Map) — ✅ done
 3. Intruder (Sniper / Battering ram / Pitchfork / Cluster bomb) — ✅ done
 4. Scanner (passive + active, OWASP Top 10) — ✅ done
-5. Crawler & Sequencer — _next_
-6. Out-of-band / Collaborator
+5. Crawler & Sequencer — ✅ done
+6. Out-of-band / Collaborator — _next_
 7. AI integration
 8. CI/CD integration & team collaboration
 9. Desktop app (Tauri)

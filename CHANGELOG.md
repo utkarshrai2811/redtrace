@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the WebSocket; active scans run as a bounded, cancellable background job. Adds
   a Send-to-Scanner action from proxy history. Tasks and findings persist
   (migration 0005).
+- Phase 5: Crawler & Sequencer — a scope-bounded spider that starts from a seed
+  URL, follows same-host in-scope links breadth-first within a depth/page budget,
+  and records every fetched page in the history and site map (passively scanning
+  each); and a Sequencer that replays a request to collect a sample of tokens (by
+  cookie name or regex) and reports their randomness (per-position Shannon
+  entropy, effective bits, and a quality verdict). Both run as bounded,
+  cancellable background jobs with live progress, add Send-to-Crawler and
+  Send-to-Sequencer actions from proxy history, and persist (migration 0006).
 
 ### Fixed
 - Post-Phase-4 (Scanner) review pass:
