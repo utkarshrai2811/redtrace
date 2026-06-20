@@ -204,6 +204,35 @@ func (db *DB) ListScanIssues(ctx context.Context) ([]*models.ScanIssue, error) {
 	return out, rows.Err()
 }
 
+// ListScanIssuesByTask returns one task's findings (without raw bytes), using
+// the task_id index instead of scanning the whole table.
+func (db *DB) ListScanIssuesByTask(ctx context.Context, taskID string) ([]*models.ScanIssue, error) {
+	rows, err := db.sql.QueryContext(ctx,
+		`SELECT id, task_id, type, name, severity, confidence, scheme, host, port, path, method,
+		        param, payload, detail, evidence, remediation, origin, created_at
+		 FROM scan_issues WHERE task_id = ? ORDER BY created_at DESC`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list scan issues by task: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*models.ScanIssue
+	for rows.Next() {
+		is := &models.ScanIssue{}
+		var tID sql.NullString
+		var created string
+		if err := rows.Scan(&is.ID, &tID, &is.Type, &is.Name, &is.Severity, &is.Confidence,
+			&is.Scheme, &is.Host, &is.Port, &is.Path, &is.Method, &is.Param, &is.Payload,
+			&is.Detail, &is.Evidence, &is.Remediation, &is.Origin, &created); err != nil {
+			return nil, fmt.Errorf("scan scan issue: %w", err)
+		}
+		is.TaskID = tID.String
+		is.CreatedAt, _ = time.Parse(timeLayout, created)
+		out = append(out, is)
+	}
+	return out, rows.Err()
+}
+
 // GetScanIssue returns one finding with its raw request/response bytes.
 func (db *DB) GetScanIssue(ctx context.Context, id string) (*models.ScanIssue, error) {
 	is := &models.ScanIssue{}
@@ -227,13 +256,22 @@ func (db *DB) GetScanIssue(ctx context.Context, id string) (*models.ScanIssue, e
 	return is, nil
 }
 
-// ClearScanIssues removes all findings.
+// ClearScanIssues removes all findings and resets every task's issue counter so
+// the persisted counts do not outlive the findings they counted.
 func (db *DB) ClearScanIssues(ctx context.Context) error {
-	_, err := db.sql.ExecContext(ctx, `DELETE FROM scan_issues`)
+	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM scan_issues`); err != nil {
 		return fmt.Errorf("clear scan issues: %w", err)
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `UPDATE scan_tasks SET issues = 0`); err != nil {
+		return fmt.Errorf("reset scan issue counts: %w", err)
+	}
+	return tx.Commit()
 }
 
 // reconcileRunningScans marks any scan task left 'running' (e.g. by a crash with
