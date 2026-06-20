@@ -15,6 +15,9 @@ const DEFAULT_TEMPLATE = 'GET / HTTP/1.1\r\nHost: \r\n\r\n';
 /** The position marker the editor wraps a selection in (U+00A7). */
 export const MARKER = '§';
 
+/** Worker cap enforced by the backend engine (intruder/engine.go maxConcurrency). */
+export const MAX_CONCURRENCY = 64;
+
 /** Count payload positions in a template: each pair of § markers is one position. */
 export function countPositions(template: string): number {
   let count = 0;
@@ -37,6 +40,38 @@ function sharesOnePayloadSet(type: AttackType): boolean {
 export function payloadSetCount(type: AttackType, positions: number): number {
   if (sharesOnePayloadSet(type)) return 1;
   return Math.max(1, positions);
+}
+
+/**
+ * Projected number of requests an attack will generate, mirroring the backend
+ * Count() so the UI can gate Start (and warn about large attacks) before the
+ * server validates. Blank payload lines are dropped, matching inputFromDraft.
+ */
+export function projectedJobCount(
+  type: AttackType,
+  positions: number,
+  payloadSets: PayloadSet[],
+): number {
+  if (positions <= 0) return 0;
+  const lens = payloadSets.map((s) => s.payloads.filter((p) => p.length > 0).length);
+  switch (type) {
+    case 'sniper':
+      return positions * (lens[0] ?? 0);
+    case 'battering_ram':
+      return lens[0] ?? 0;
+    case 'pitchfork': {
+      const contributing = lens.slice(0, positions);
+      return contributing.length > 0 ? Math.min(...contributing) : 0;
+    }
+    case 'cluster_bomb': {
+      const contributing = lens.slice(0, positions);
+      return contributing.length > 0 && contributing.every((l) => l > 0)
+        ? contributing.reduce((a, b) => a * b, 1)
+        : 0;
+    }
+    default:
+      return 0;
+  }
 }
 
 function emptyPayloadSet(): PayloadSet {
@@ -320,15 +355,21 @@ export const useIntruderStore = create<IntruderState>((set, get) => ({
 
       // Update the selected attack's status/progress in the draft-adjacent list
       // entry above; merge per-result rows into the results list, deduped by
-      // index so a reload + live updates never duplicate.
+      // index so a reload + live updates never duplicate, and kept in index
+      // order on insert so the table never has to re-sort the whole array.
       let results = s.results;
       if (u.result) {
-        const idx = results.findIndex((r) => r.index === u.result!.index);
+        const incoming = u.result;
+        const idx = results.findIndex((r) => r.index === incoming.index);
         if (idx >= 0) {
           results = results.slice();
-          results[idx] = u.result;
+          results[idx] = incoming;
         } else {
-          results = [...results, u.result];
+          const next = results.slice();
+          let i = next.length;
+          while (i > 0 && next[i - 1].index > incoming.index) i--;
+          next.splice(i, 0, incoming);
+          results = next;
         }
       }
 

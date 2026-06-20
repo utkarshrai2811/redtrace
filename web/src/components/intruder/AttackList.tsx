@@ -62,7 +62,7 @@ export function AttackList() {
                     title="Delete attack"
                     aria-label="Delete attack"
                     onClick={() => void deleteAttack(attack.id)}
-                    className="shrink-0 rounded px-1 text-zinc-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                    className="shrink-0 rounded px-1 text-zinc-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                   >
                     ✕
                   </button>

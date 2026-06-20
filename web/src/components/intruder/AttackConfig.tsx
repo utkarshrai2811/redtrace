@@ -8,8 +8,10 @@ import { Spinner } from '../ui/Spinner';
 import { PayloadSetEditor } from './PayloadSetEditor';
 import {
   MARKER,
+  MAX_CONCURRENCY,
   countPositions,
   payloadSetCount,
+  projectedJobCount,
   useIntruderStore,
 } from '../../store/intruderStore';
 import type { AttackType, PayloadSet } from '../../lib/types';
@@ -59,10 +61,12 @@ export function AttackConfig() {
     const after = value.slice(selectionEnd);
     const next = `${before}${MARKER}${selected}${MARKER}${after}`;
     updateDraft({ templateText: next });
-    // Restore focus and place the caret just after the inserted marker pair.
+    // Restore focus. With a real selection, drop the caret after the pair; with
+    // an empty selection (an insertion point), place it between the markers so
+    // the user can immediately type the value to fuzz.
     requestAnimationFrame(() => {
       el.focus();
-      const caret = selectionEnd + 2;
+      const caret = selectionStart === selectionEnd ? selectionStart + 1 : selectionEnd + 2;
       el.setSelectionRange(caret, caret);
     });
   };
@@ -76,8 +80,11 @@ export function AttackConfig() {
     updateDraft({ payloadSets });
   };
 
-  const hasPayloads = draft.payloadSets.some((s) => s.payloads.some((p) => p.length > 0));
-  const canStart = !running && !starting && positions > 0 && hasPayloads;
+  // Gate Start on the projected request count, which mirrors the backend: for
+  // pitchfork/cluster bomb every contributing position must have payloads, so a
+  // single filled set is not enough.
+  const jobCount = projectedJobCount(draft.type, positions, draft.payloadSets);
+  const canStart = !running && !starting && jobCount > 0;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
@@ -140,10 +147,14 @@ export function AttackConfig() {
           <Input
             type="number"
             min={1}
-            max={100}
+            max={MAX_CONCURRENCY}
             value={draft.concurrency}
             aria-label="Concurrency"
-            onChange={(e) => updateDraft({ concurrency: Math.max(1, Number(e.target.value) || 1) })}
+            onChange={(e) =>
+              updateDraft({
+                concurrency: Math.min(MAX_CONCURRENCY, Math.max(1, Number(e.target.value) || 1)),
+              })
+            }
             className="w-16 tabular-nums"
             disabled={running}
           />
@@ -171,7 +182,8 @@ export function AttackConfig() {
           </span>
         )}
         <span className="ml-auto font-mono text-2xs text-zinc-500">
-          {positions} position{positions === 1 ? '' : 's'}
+          {jobCount.toLocaleString('en-US')} request{jobCount === 1 ? '' : 's'} · {positions}{' '}
+          position{positions === 1 ? '' : 's'}
         </span>
       </div>
 
