@@ -60,6 +60,14 @@ func Open(path string) (*DB, error) {
 		_ = sqlDB.Close()
 		return nil, err
 	}
+	if err := db.reconcileRunningCrawls(); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if err := db.reconcileRunningSequencers(); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
 	return db, nil
 }
 
