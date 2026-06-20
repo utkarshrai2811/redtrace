@@ -281,8 +281,8 @@ func buildFilter(f RequestFilter, forceLike bool) (string, []any) {
 		args = append(args, f.Host)
 	}
 	if f.MimeType != "" {
-		conds = append(conds, "resp.mime_type LIKE '%' || ? || '%'")
-		args = append(args, f.MimeType)
+		conds = append(conds, `resp.mime_type LIKE '%' || ? || '%' ESCAPE '\'`)
+		args = append(args, likeEscape(f.MimeType))
 	}
 	if f.StatusMin > 0 {
 		conds = append(conds, "resp.status_code >= ?")
@@ -305,8 +305,9 @@ func buildFilter(f RequestFilter, forceLike bool) (string, []any) {
 			// Fallback (short query, or FTS rejected the input): a reliable LIKE
 			// scan over the base tables. CAST(raw AS TEXT) makes the BLOB bodies
 			// matchable; this never errors on arbitrary input.
-			conds = append(conds, "(r.url LIKE '%'||?||'%' OR CAST(r.raw AS TEXT) LIKE '%'||?||'%' OR CAST(resp.raw AS TEXT) LIKE '%'||?||'%')")
-			args = append(args, c, c, c)
+			conds = append(conds, `(r.url LIKE '%'||?||'%' ESCAPE '\' OR CAST(r.raw AS TEXT) LIKE '%'||?||'%' ESCAPE '\' OR CAST(resp.raw AS TEXT) LIKE '%'||?||'%' ESCAPE '\')`)
+			esc := likeEscape(c)
+			args = append(args, esc, esc, esc)
 		}
 	}
 
@@ -314,6 +315,16 @@ func buildFilter(f RequestFilter, forceLike bool) (string, []any) {
 		return "", args
 	}
 	return "WHERE " + strings.Join(conds, " AND "), args
+}
+
+// likeEscaper escapes the SQLite LIKE metacharacters so user input is matched
+// literally. The backslash is escaped first; NewReplacer makes a single,
+// non-overlapping pass, so the escapes it inserts are not re-processed. Paired
+// with an `ESCAPE '\'` clause on each LIKE.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func likeEscape(s string) string {
+	return likeEscaper.Replace(s)
 }
 
 func truncate(b []byte) []byte {

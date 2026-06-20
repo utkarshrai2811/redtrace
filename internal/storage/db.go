@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/golang-migrate/migrate/v4"
 	migsqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
@@ -27,10 +28,15 @@ type DB struct {
 // Open opens (creating if needed) the SQLite database at path and applies all
 // pending migrations. Use ":memory:" for an ephemeral database.
 func Open(path string) (*DB, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path)
-	sqlDB, err := sql.Open("sqlite", dsn)
+	sqlDB, err := sql.Open("sqlite", dsnFor(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	// An in-memory database is private per connection, so the pool must use a
+	// single connection — otherwise migrations run on one connection and other
+	// queries hit a fresh, schema-less database ("no such table").
+	if path == ":memory:" {
+		sqlDB.SetMaxOpenConns(1)
 	}
 	if err := sqlDB.Ping(); err != nil {
 		_ = sqlDB.Close()
@@ -43,6 +49,17 @@ func Open(path string) (*DB, error) {
 	}
 
 	return &DB{sql: sqlDB}, nil
+}
+
+// dsnFor builds the SQLite DSN, URL-escaping a filesystem path so reserved
+// characters (?, #, &) in it cannot leak into the DSN query portion and silently
+// drop pragmas or relocate the database file.
+func dsnFor(path string) string {
+	const params = "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	if path == ":memory:" {
+		return "file::memory:?" + params
+	}
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + params
 }
 
 // Close closes the underlying connection pool.
