@@ -8,8 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"net/url"
+
+	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/scanner"
+	"github.com/utkarshrai2811/redtrace/internal/sequencer"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 	"github.com/utkarshrai2811/redtrace/internal/storage/models"
 )
@@ -234,6 +238,86 @@ func (a *API) SendToScanner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toScanTaskView(task))
+}
+
+// SendToCrawler handles POST /api/requests/{id}/send-to-crawler, seeding a crawl
+// at the captured request's URL.
+func (a *API) SendToCrawler(w http.ResponseWriter, r *http.Request) {
+	ex, err := a.Store.GetExchange(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such request")
+		return
+	}
+	if err != nil {
+		a.serverError(w, "get_failed", err)
+		return
+	}
+	req := ex.Request
+	u, err := url.Parse(req.URL)
+	if err != nil || u.Host == "" {
+		writeError(w, http.StatusBadRequest, "invalid_seed", "request has no usable URL to seed a crawl")
+		return
+	}
+	task := &models.CrawlTask{
+		ID: storage.NewID(), Name: "Crawl " + req.Host, Seed: req.URL, Scheme: req.Scheme,
+		Host: u.Host, MaxDepth: 3, MaxPages: 200, Status: crawler.StatusPending,
+	}
+	if err := a.Store.CreateCrawlTask(r.Context(), task); err != nil {
+		a.serverError(w, "create_failed", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, task)
+}
+
+// SendToSequencer handles POST /api/requests/{id}/send-to-sequencer, seeding a
+// token-capture task that replays the captured request. If the response set a
+// cookie, its name is pre-filled as the extraction selector.
+func (a *API) SendToSequencer(w http.ResponseWriter, r *http.Request) {
+	ex, err := a.Store.GetExchange(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such request")
+		return
+	}
+	if err != nil {
+		a.serverError(w, "get_failed", err)
+		return
+	}
+	req := ex.Request
+	port := req.Port
+	if port == 0 {
+		if req.Scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+	selector := ""
+	if ex.Response != nil {
+		selector = firstSetCookieName(ex.Response.Raw)
+	}
+	task := &models.SequencerTask{
+		ID: storage.NewID(), Name: "Tokens " + req.Path, Scheme: req.Scheme,
+		Host: fmt.Sprintf("%s:%d", req.Host, port), Template: req.Raw, HTTPVersion: "HTTP/1.1",
+		Source: "cookie", Selector: selector, Target: 200, Status: sequencer.StatusPending,
+	}
+	if err := a.Store.CreateSequencerTask(r.Context(), task); err != nil {
+		a.serverError(w, "create_failed", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toSeqTaskView(task))
+}
+
+// firstSetCookieName returns the name of the first Set-Cookie in a raw response.
+func firstSetCookieName(raw []byte) string {
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if len(line) >= 11 && strings.EqualFold(line[:11], "Set-Cookie:") {
+			v := strings.TrimSpace(line[11:])
+			if i := strings.IndexByte(v, '='); i >= 0 {
+				return strings.TrimSpace(v[:i])
+			}
+		}
+	}
+	return ""
 }
 
 func atoiDefault(s string, def int) int {

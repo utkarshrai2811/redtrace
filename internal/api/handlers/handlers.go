@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
 	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/scope"
+	"github.com/utkarshrai2811/redtrace/internal/sequencer"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
 
@@ -32,6 +34,8 @@ type API struct {
 	Repeater    *repeater.Engine
 	Intruder    *intruder.Runner
 	Scanner     *scanner.Scanner
+	Crawler     *crawler.Crawler
+	Sequencer   *sequencer.Sequencer
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger

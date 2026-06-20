@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
+	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
 	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/scope"
+	"github.com/utkarshrai2811/redtrace/internal/sequencer"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 	"github.com/utkarshrai2811/redtrace/internal/storage/models"
 )
@@ -49,6 +51,15 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 	hub := handlers.NewHub()
 	runner := intruder.NewRunner(handlers.IntruderStore{DB: store}, hub.BroadcastIntruder)
 	scan := scanner.NewScanner(handlers.ScannerStore{DB: store}, hub.BroadcastScanner)
+	// Passively scan each page the crawler fetches.
+	scanPage := func(p crawler.Page) {
+		scan.ScanPassive(context.Background(), scanner.Target{
+			Scheme: p.Scheme, Host: p.Host, Port: p.Port, Method: p.Method, Path: p.Path,
+			Query: p.Query, RequestRaw: p.RequestRaw, ResponseRaw: p.ResponseRaw,
+		})
+	}
+	crawl := crawler.NewCrawler(handlers.CrawlerStore{DB: store}, hub.BroadcastCrawl, sc.InScope, scanPage)
+	seq := sequencer.NewSequencer(handlers.SequencerStore{DB: store}, hub.BroadcastSequencer)
 	a := &handlers.API{
 		Store:       store,
 		Scope:       sc,
@@ -59,6 +70,8 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Repeater:    repeater.New(),
 		Intruder:    runner,
 		Scanner:     scan,
+		Crawler:     crawl,
+		Sequencer:   seq,
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,
@@ -122,6 +135,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		// then drain HTTP.
 		s.api.Intruder.Shutdown(shutdownCtx)
 		s.api.Scanner.Shutdown(shutdownCtx)
+		s.api.Crawler.Shutdown(shutdownCtx)
+		s.api.Sequencer.Shutdown(shutdownCtx)
 		_ = s.server.Shutdown(shutdownCtx)
 	}()
 

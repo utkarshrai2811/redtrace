@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/scanner"
+	"github.com/utkarshrai2811/redtrace/internal/sequencer"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
 
@@ -132,6 +134,16 @@ func (h *Hub) BroadcastIntruder(update intruder.Update) {
 // BroadcastScanner pushes a Scanner finding or active-scan progress update.
 func (h *Hub) BroadcastScanner(update scanner.Update) {
 	h.Broadcast("scanner", update)
+}
+
+// BroadcastCrawl pushes a Crawler discovery or progress update.
+func (h *Hub) BroadcastCrawl(update crawler.Update) {
+	h.Broadcast("crawl", update)
+}
+
+// BroadcastSequencer pushes a Sequencer capture progress update.
+func (h *Hub) BroadcastSequencer(update sequencer.Update) {
+	h.Broadcast("sequencer", update)
 }
 
 func (h *Hub) remove(c *wsClient) {

@@ -28,6 +28,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/requests/{id}/send-to-repeater", a.SendToRepeater)
 	mux.HandleFunc("POST /api/requests/{id}/send-to-intruder", a.SendToIntruder)
 	mux.HandleFunc("POST /api/requests/{id}/send-to-scanner", a.SendToScanner)
+	mux.HandleFunc("POST /api/requests/{id}/send-to-crawler", a.SendToCrawler)
+	mux.HandleFunc("POST /api/requests/{id}/send-to-sequencer", a.SendToSequencer)
 	mux.HandleFunc("GET /api/hosts", a.Hosts)
 
 	// Scope
@@ -74,6 +76,23 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/scanner/tasks/{id}", a.DeleteScanTask)
 	mux.HandleFunc("POST /api/scanner/tasks/{id}/start", a.StartScanTask)
 	mux.HandleFunc("POST /api/scanner/tasks/{id}/stop", a.StopScanTask)
+
+	// Crawler
+	mux.HandleFunc("GET /api/crawler/tasks", a.ListCrawlTasks)
+	mux.HandleFunc("POST /api/crawler/tasks", a.CreateCrawlTask)
+	mux.HandleFunc("GET /api/crawler/tasks/{id}", a.GetCrawlTask)
+	mux.HandleFunc("DELETE /api/crawler/tasks/{id}", a.DeleteCrawlTask)
+	mux.HandleFunc("POST /api/crawler/tasks/{id}/start", a.StartCrawlTask)
+	mux.HandleFunc("POST /api/crawler/tasks/{id}/stop", a.StopCrawlTask)
+
+	// Sequencer
+	mux.HandleFunc("GET /api/sequencer/tasks", a.ListSequencerTasks)
+	mux.HandleFunc("POST /api/sequencer/tasks", a.CreateSequencerTask)
+	mux.HandleFunc("GET /api/sequencer/tasks/{id}", a.GetSequencerTask)
+	mux.HandleFunc("PUT /api/sequencer/tasks/{id}", a.UpdateSequencerTask)
+	mux.HandleFunc("DELETE /api/sequencer/tasks/{id}", a.DeleteSequencerTask)
+	mux.HandleFunc("POST /api/sequencer/tasks/{id}/start", a.StartSequencerTask)
+	mux.HandleFunc("POST /api/sequencer/tasks/{id}/stop", a.StopSequencerTask)
 
 	// Repeater
 	mux.HandleFunc("GET /api/repeater/tabs", a.ListRepeaterTabs)
