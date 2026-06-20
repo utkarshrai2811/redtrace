@@ -130,6 +130,18 @@ func (db *DB) UpdateIntruderProgress(ctx context.Context, id string, completed i
 	return nil
 }
 
+// reconcileRunningAttacks marks any attack left 'running' (e.g. by a crash or
+// hard kill with no live runner) as 'stopped'. Called once on startup.
+func (db *DB) reconcileRunningAttacks() error {
+	_, err := db.sql.ExecContext(context.Background(),
+		`UPDATE intruder_attacks SET status = ?, updated_at = ? WHERE status = ?`,
+		"stopped", time.Now().Format(timeLayout), "running")
+	if err != nil {
+		return fmt.Errorf("reconcile running attacks: %w", err)
+	}
+	return nil
+}
+
 // PrepareIntruderRun resets an attack for a (re-)run: it clears any prior
 // results and sets the total, zeroes completed, and marks it running.
 func (db *DB) PrepareIntruderRun(ctx context.Context, id string, total int) error {

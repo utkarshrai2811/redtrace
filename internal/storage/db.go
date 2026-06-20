@@ -48,7 +48,15 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{sql: sqlDB}, nil
+	db := &DB{sql: sqlDB}
+	// A crash or hard kill can leave intruder attacks marked 'running' with no
+	// live runner; reconcile them to 'stopped' so they are not perpetually
+	// in-flight and the UI can act on them.
+	if err := db.reconcileRunningAttacks(); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 // dsnFor builds the SQLite DSN, URL-escaping a filesystem path so reserved

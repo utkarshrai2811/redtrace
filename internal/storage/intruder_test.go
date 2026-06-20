@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/utkarshrai2811/redtrace/internal/storage/models"
@@ -73,5 +74,38 @@ func TestIntruderAttackLifecycle(t *testing.T) {
 	}
 	if results, _ := db.ListIntruderResults(ctx, attack.ID); len(results) != 0 {
 		t.Errorf("results not cascade-deleted: %d remain", len(results))
+	}
+}
+
+func TestReconcileRunningAttacksOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reconcile.db")
+	ctx := context.Background()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	attack := &models.IntruderAttack{
+		ID: NewID(), Name: "orphan", Scheme: "http", Host: "h", AttackType: "sniper",
+		Config: []byte("{}"), Status: "running",
+	}
+	if err := db.CreateIntruderAttack(ctx, attack); err != nil {
+		t.Fatalf("CreateIntruderAttack: %v", err)
+	}
+	_ = db.Close()
+
+	// Reopening simulates a restart after a crash; the orphaned 'running' row
+	// must be reconciled to 'stopped' so it is not perpetually in-flight.
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+	got, err := db2.GetIntruderAttack(ctx, attack.ID)
+	if err != nil {
+		t.Fatalf("GetIntruderAttack: %v", err)
+	}
+	if got.Status != "stopped" {
+		t.Errorf("status after reopen = %q, want stopped", got.Status)
 	}
 }
