@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -83,8 +84,33 @@ func headerValue(headers []byte, name string) string {
 	return ""
 }
 
+// parseQueryLenient parses a query/form string into values, falling back to a
+// tolerant '&'/';'-splitter when url.ParseQuery rejects the input (e.g. a legacy
+// semicolon separator), so such requests still yield insertion points.
+func parseQueryLenient(raw string) url.Values {
+	if v, err := url.ParseQuery(raw); err == nil {
+		return v
+	}
+	v := url.Values{}
+	for _, pair := range strings.FieldsFunc(raw, func(r rune) bool { return r == '&' || r == ';' }) {
+		key, val, _ := strings.Cut(pair, "=")
+		if k, err := url.QueryUnescape(key); err == nil {
+			key = k
+		}
+		if u, err := url.QueryUnescape(val); err == nil {
+			val = u
+		}
+		if key != "" {
+			v.Add(key, val)
+		}
+	}
+	return v
+}
+
 // insertions returns the parameters the active scanner will probe (query
-// parameters, plus form-body parameters when the body is form-urlencoded).
+// parameters, plus form-body parameters when the body is form-urlencoded). The
+// selection is deterministic (sorted by name) so the same template always probes
+// the same parameters, including which survive the maxInsertionPoints cap.
 func (t *reqTemplate) insertions() []insertion {
 	var out []insertion
 	seen := map[string]bool{}
@@ -96,17 +122,19 @@ func (t *reqTemplate) insertions() []insertion {
 		seen[key] = true
 		out = append(out, insertion{Name: name, Kind: kind, Orig: value})
 	}
-	if q, err := url.ParseQuery(t.rawQuery); err == nil {
-		for name, vals := range q {
-			add(name, first(vals), "query")
+	addAll := func(v url.Values, kind string) {
+		names := make([]string, 0, len(v))
+		for name := range v {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			add(name, first(v[name]), kind)
 		}
 	}
+	addAll(parseQueryLenient(t.rawQuery), "query")
 	if t.isForm {
-		if f, err := url.ParseQuery(string(t.body)); err == nil {
-			for name, vals := range f {
-				add(name, first(vals), "body")
-			}
-		}
+		addAll(parseQueryLenient(string(t.body)), "body")
 	}
 	return out
 }
@@ -118,23 +146,24 @@ func first(v []string) string {
 	return v[0]
 }
 
-// build rebuilds the raw request with ip set to payload.
+// build rebuilds the raw request with ip set to payload. The injected value is
+// escaped only enough to keep the request line / body well-formed (spaces and
+// query delimiters), NOT via url.Values.Encode, so a payload already in
+// percent-encoded wire form (e.g. the ..%2f.. traversal variant) is preserved
+// rather than double-encoded into ..%252f..
 func (t *reqTemplate) build(ip insertion, payload string) []byte {
 	method, proto, headers, body := t.method, t.proto, t.headers, t.body
 	target := t.target
 
 	switch ip.Kind {
 	case "query":
-		q, _ := url.ParseQuery(t.rawQuery)
-		q.Set(ip.Name, payload)
-		target = t.path
-		if enc := q.Encode(); enc != "" {
-			target += "?" + enc
+		if q := encodeWithRawParam(parseQueryLenient(t.rawQuery), ip.Name, payload); q != "" {
+			target = t.path + "?" + q
+		} else {
+			target = t.path
 		}
 	case "body":
-		f, _ := url.ParseQuery(string(t.body))
-		f.Set(ip.Name, payload)
-		body = []byte(f.Encode())
+		body = []byte(encodeWithRawParam(parseQueryLenient(string(t.body)), ip.Name, payload))
 		headers = setContentLength(headers, len(body))
 	}
 
@@ -144,6 +173,41 @@ func (t *reqTemplate) build(ip insertion, payload string) []byte {
 	b.WriteString("\r\n\r\n")
 	b.Write(body)
 	return b.Bytes()
+}
+
+// encodeWithRawParam re-encodes every parameter except name normally, then
+// appends name=value with value escaped only for structurally-dangerous bytes
+// (so existing percent-encoding in the payload survives).
+func encodeWithRawParam(v url.Values, name, value string) string {
+	rest := url.Values{}
+	for k, vals := range v {
+		if k == name {
+			continue
+		}
+		rest[k] = vals
+	}
+	parts := make([]string, 0, 2)
+	if enc := rest.Encode(); enc != "" {
+		parts = append(parts, enc)
+	}
+	parts = append(parts, url.QueryEscape(name)+"="+escapeParamValue(value))
+	return strings.Join(parts, "&")
+}
+
+// escapeParamValue percent-encodes only the bytes that would break the request
+// line or the query/body structure, leaving everything else (including '%', '/',
+// '<', quotes) intact so attack payloads reach the target as intended.
+func escapeParamValue(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c <= 0x20 || c >= 0x7f || c == '&' || c == '#' || c == '+' {
+			fmt.Fprintf(&b, "%%%02X", c)
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // setContentLength rewrites (or appends) a Content-Length header in a raw header
@@ -184,8 +248,12 @@ type activeCheck struct {
 	severity    Severity
 	confidence  Confidence
 	remediation string
-	payloads    func(token string) []string
-	detect      func(payload, token string, resp, base probeResp) (evidence string, ok bool)
+	// needsBaseline marks checks that suppress findings by diffing against the
+	// baseline response; they are skipped when the baseline request failed (an
+	// empty baseline would defeat the suppression and cause false positives).
+	needsBaseline bool
+	payloads      func(token string) []string
+	detect        func(payload, token string, resp, base probeResp) (evidence string, ok bool)
 }
 
 var (
@@ -226,8 +294,9 @@ var activeChecks = []activeCheck{
 	},
 	{
 		id: "sql_injection", name: "SQL injection (error-based)", severity: SeverityHigh, confidence: ConfidenceFirm,
-		remediation: "Use parameterised queries / prepared statements; never build SQL from concatenated input.",
-		payloads:    func(string) []string { return []string{"'", "\"", "')", "'-- -"} },
+		remediation:   "Use parameterised queries / prepared statements; never build SQL from concatenated input.",
+		needsBaseline: true,
+		payloads:      func(string) []string { return []string{"'", "\"", "')", "'-- -"} },
 		detect: func(_, _ string, resp, base probeResp) (string, bool) {
 			for _, sig := range sqlErrors {
 				if strings.Contains(resp.bodyLow, sig) && !strings.Contains(base.bodyLow, sig) {
@@ -239,7 +308,8 @@ var activeChecks = []activeCheck{
 	},
 	{
 		id: "path_traversal", name: "Path traversal / local file inclusion", severity: SeverityHigh, confidence: ConfidenceFirm,
-		remediation: "Resolve and validate paths against an allowlist; never pass user input to filesystem APIs.",
+		remediation:   "Resolve and validate paths against an allowlist; never pass user input to filesystem APIs.",
+		needsBaseline: true,
 		payloads: func(string) []string {
 			return []string{
 				"../../../../../../../../etc/passwd",
@@ -272,7 +342,8 @@ var activeChecks = []activeCheck{
 	},
 	{
 		id: "ssti", name: "Server-side template injection", severity: SeverityHigh, confidence: ConfidenceFirm,
-		remediation: "Do not render user input as a template; use sandboxed, logic-less templates with escaping.",
+		remediation:   "Do not render user input as a template; use sandboxed, logic-less templates with escaping.",
+		needsBaseline: true,
 		payloads: func(string) []string {
 			return []string{"{{1337*1337}}", "${1337*1337}", "#{1337*1337}", "<%= 1337*1337 %>"}
 		},
@@ -288,7 +359,8 @@ var activeChecks = []activeCheck{
 	},
 	{
 		id: "command_injection", name: "OS command injection", severity: SeverityHigh, confidence: ConfidenceFirm,
-		remediation: "Avoid shelling out with user input; use argument arrays / safe APIs and strict allowlists.",
+		remediation:   "Avoid shelling out with user input; use argument arrays / safe APIs and strict allowlists.",
+		needsBaseline: true,
 		payloads: func(string) []string {
 			a := "$((31337*31337))" // 981990569 when evaluated by a shell
 			return []string{";echo " + a, "|echo " + a, "`echo " + a + "`", "$(echo " + a + ")"}

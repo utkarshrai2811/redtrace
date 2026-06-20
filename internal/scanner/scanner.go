@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"strings"
+	"unicode/utf8"
 )
 
 // Severity ranks a finding's impact.
@@ -78,10 +79,13 @@ type Target struct {
 }
 
 // message is a parsed HTTP message: its headers and body, regardless of whether
-// it is a request or a response (the first line is skipped).
+// it is a request or a response (the first line is skipped). bodyLow holds a
+// lowercased copy of the (scannable) body, computed once and shared by the
+// body-signature checks instead of each re-lowercasing the whole body.
 type message struct {
 	headers http.Header
 	body    []byte
+	bodyLow string
 }
 
 // parseMessage splits raw HTTP bytes into headers and body. It is tolerant of
@@ -103,10 +107,14 @@ func fingerprint(parts ...string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// truncate bounds an evidence string so a finding never stores a huge blob.
+// truncate bounds an evidence string so a finding never stores a huge blob,
+// cutting back to a rune boundary so multibyte UTF-8 is never sliced mid-rune.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "…"
 }

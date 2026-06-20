@@ -91,6 +91,55 @@ func TestPassiveCORSReflectionWithCredentials(t *testing.T) {
 	}
 }
 
+func TestPassiveCookieAttributeParsing(t *testing.T) {
+	cases := []struct {
+		name      string
+		setCookie string
+		want      bool
+	}{
+		// __Secure- prefix contains "secure" in the NAME but the Secure attribute
+		// is genuinely absent — must still be flagged.
+		{"secure-prefix-missing-secure", "__Secure-sid=abc; Path=/; HttpOnly; SameSite=Lax", true},
+		// Value contains the attribute keywords but no attributes are set.
+		{"value-collision", "token=mysecuresamesitehttponlyvalue; Path=/", true},
+		// Genuinely fully attributed over HTTPS — not flagged.
+		{"fully-attributed", "sid=abc; Secure; HttpOnly; SameSite=Lax", false},
+	}
+	for _, c := range cases {
+		resp := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+			"Strict-Transport-Security: max-age=1\r\nX-Content-Type-Options: nosniff\r\n" +
+			"Set-Cookie: " + c.setCookie + "\r\n\r\n{}"
+		target := Target{
+			Scheme: "https", Host: "ex.com", Port: 443, Method: "GET", Path: "/",
+			RequestRaw: []byte("GET / HTTP/1.1\r\nHost: ex.com\r\n\r\n"), ResponseRaw: []byte(resp),
+		}
+		_, flagged := passiveTypes(Passive(target))["insecure_cookie"]
+		if flagged != c.want {
+			t.Errorf("%s: insecure_cookie flagged=%v, want %v", c.name, flagged, c.want)
+		}
+	}
+}
+
+func TestPassivePasswordOverHTTP(t *testing.T) {
+	cases := map[string]bool{
+		`<input type='password'>`:     true,
+		`<input  type = "password" >`: true,
+		`<input type=password>`:       true,
+		`<input type="text">`:         false,
+	}
+	for body, want := range cases {
+		resp := "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + body
+		target := Target{
+			Scheme: "http", Host: "ex.com", Port: 80, Method: "GET", Path: "/login",
+			RequestRaw: []byte("GET /login HTTP/1.1\r\nHost: ex.com\r\n\r\n"), ResponseRaw: []byte(resp),
+		}
+		_, flagged := passiveTypes(Passive(target))["password_over_http"]
+		if flagged != want {
+			t.Errorf("body %q: password_over_http flagged=%v, want %v", body, flagged, want)
+		}
+	}
+}
+
 func keys(m map[string]Issue) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

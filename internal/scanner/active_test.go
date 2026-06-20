@@ -46,6 +46,61 @@ func TestPlanCountRejectsNoParams(t *testing.T) {
 	}
 }
 
+func TestBuildPreservesEncodedPayload(t *testing.T) {
+	tpl, err := parseRawRequest([]byte("GET /?file=x HTTP/1.1\r\nHost: ex.com\r\n\r\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out := string(tpl.build(insertion{Name: "file", Kind: "query"}, "..%2f..%2fetc%2fpasswd"))
+	// The already-percent-encoded traversal payload must reach the wire single-
+	// encoded, not double-encoded into %252f.
+	if !strings.Contains(out, "..%2f..%2fetc%2fpasswd") {
+		t.Errorf("encoded payload was mangled: %q", out)
+	}
+	if strings.Contains(out, "%252f") {
+		t.Errorf("payload was double-encoded: %q", out)
+	}
+}
+
+func TestInsertionsDeterministicOverCap(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("GET /?")
+	for i := 0; i < 60; i++ {
+		if i > 0 {
+			sb.WriteByte('&')
+		}
+		fmt.Fprintf(&sb, "p%02d=v", i)
+	}
+	sb.WriteString(" HTTP/1.1\r\nHost: ex.com\r\n\r\n")
+	tpl, err := parseRawRequest([]byte(sb.String()))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	a, b := tpl.insertions(), tpl.insertions()
+	if len(a) != maxInsertionPoints {
+		t.Fatalf("got %d insertions, want cap %d", len(a), maxInsertionPoints)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("insertions not deterministic at %d: %v vs %v", i, a[i], b[i])
+		}
+	}
+}
+
+func TestInsertionsSemicolonQuery(t *testing.T) {
+	tpl, err := parseRawRequest([]byte("GET /a?x=1;y=2 HTTP/1.1\r\nHost: ex.com\r\n\r\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	names := map[string]bool{}
+	for _, ip := range tpl.insertions() {
+		names[ip.Name] = true
+	}
+	if !names["x"] || !names["y"] {
+		t.Errorf("semicolon-separated query not parsed into insertions: %v", names)
+	}
+}
+
 // collectStore captures findings and signals when the scan reaches a terminal
 // status, deduping by fingerprint like the real store.
 type collectStore struct {

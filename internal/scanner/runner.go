@@ -165,22 +165,24 @@ func (s *Scanner) StartActive(taskID string, cfg ActiveConfig, total int) (bool,
 		}()
 
 		s.emit(Update{Kind: "status", TaskID: taskID, Status: StatusRunning, Total: total})
-		s.runActive(ctx, bg, taskID, cfg, total)
+		completed, issues := s.runActive(ctx, bg, taskID, cfg, total)
 
 		status := StatusCompleted
 		if ctx.Err() != nil {
 			status = StatusStopped
 		}
 		_ = s.store.SetScanStatus(bg, taskID, status)
-		s.emit(Update{Kind: "status", TaskID: taskID, Status: status, Total: total})
+		// Carry the final counts so the live UI shows the real result instead of
+		// resetting to 0 on completion.
+		s.emit(Update{Kind: "status", TaskID: taskID, Status: status, Completed: completed, Total: total, Issues: issues})
 	}()
 	return true, nil
 }
 
-func (s *Scanner) runActive(ctx, bg context.Context, taskID string, cfg ActiveConfig, total int) {
+func (s *Scanner) runActive(ctx, bg context.Context, taskID string, cfg ActiveConfig, total int) (int, int) {
 	t, err := parseRawRequest(cfg.Template)
 	if err != nil {
-		return
+		return 0, 0
 	}
 	ips := t.insertions()
 	token := randToken()
@@ -195,8 +197,10 @@ func (s *Scanner) runActive(ctx, bg context.Context, taskID string, cfg ActiveCo
 	}
 
 	// Baseline: the original request, used to suppress findings already present
-	// before any payload was injected.
-	base, _, _ := s.sendProbe(ctx, cfg, cfg.Template)
+	// before any payload was injected. If it fails, the diff-based detectors are
+	// skipped (an empty baseline would defeat their suppression).
+	base, _, baseErr := s.sendProbe(ctx, cfg, cfg.Template)
+	baselineOK := baseErr == nil
 	completed++
 	flush(false)
 
@@ -222,19 +226,25 @@ func (s *Scanner) runActive(ctx, bg context.Context, taskID string, cfg ActiveCo
 		go func() {
 			defer wg.Done()
 			for j := range jobCh {
+				c := activeChecks[j.check]
+				// A failed baseline disables the diff-based suppression, so skip
+				// those checks rather than emit false positives.
+				if c.needsBaseline && !baselineOK {
+					resCh <- nil
+					continue
+				}
 				raw := t.build(j.ip, j.payload)
 				resp, rawResp, err := s.sendProbe(ctx, cfg, raw)
 				if err != nil {
 					resCh <- nil
 					continue
 				}
-				c := activeChecks[j.check]
 				ev, ok := c.detect(j.payload, token, resp, base)
 				if !ok {
 					resCh <- nil
 					continue
 				}
-				is := buildActiveIssue(cfg, t, j.ip, c, j.payload, ev, raw, rawResp)
+				is := buildActiveIssue(taskID, cfg, t, j.ip, c, j.payload, ev, raw, rawResp)
 				resCh <- &is
 			}
 		}()
@@ -266,6 +276,7 @@ func (s *Scanner) runActive(ctx, bg context.Context, taskID string, cfg ActiveCo
 		flush(false)
 	}
 	flush(true)
+	return completed, issues
 }
 
 func (s *Scanner) sendProbe(ctx context.Context, cfg ActiveConfig, raw []byte) (probeResp, []byte, error) {
@@ -282,7 +293,7 @@ func (s *Scanner) sendProbe(ctx context.Context, cfg ActiveConfig, raw []byte) (
 	return toProbeResp(resp.Raw, resp.StatusCode), resp.Raw, nil
 }
 
-func buildActiveIssue(cfg ActiveConfig, t *reqTemplate, ip insertion, c activeCheck, payload, evidence string, rawReq, rawResp []byte) Issue {
+func buildActiveIssue(taskID string, cfg ActiveConfig, t *reqTemplate, ip insertion, c activeCheck, payload, evidence string, rawReq, rawResp []byte) Issue {
 	host, port := hostPort(cfg.Host, cfg.Scheme)
 	return Issue{
 		Type: c.id, Name: c.name, Severity: c.severity, Confidence: c.confidence,
@@ -292,7 +303,10 @@ func buildActiveIssue(cfg ActiveConfig, t *reqTemplate, ip insertion, c activeCh
 		Evidence:    truncate(evidence, 512),
 		Remediation: c.remediation,
 		Origin:      OriginActive,
-		Fingerprint: fingerprint(c.id, cfg.Host, t.path, ip.Kind, ip.Name),
+		// Scope the active fingerprint to the task so two scans of the same
+		// endpoint each record (and count) their own findings; the task-scoped
+		// PrepareScanRun reset then stays consistent with the dedup scope.
+		Fingerprint: fingerprint("active", taskID, c.id, cfg.Host, t.path, ip.Kind, ip.Name),
 		RequestRaw:  rawReq, ResponseRaw: rawResp,
 	}
 }

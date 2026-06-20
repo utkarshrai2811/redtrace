@@ -3,19 +3,50 @@ package scanner
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 )
+
+// maxScanBody caps how much of a response body the signature checks lowercase
+// and scan; the markers they look for appear early or in small responses.
+const maxScanBody = 1 << 20
 
 // Passive runs every passive check against a captured exchange and returns the
 // findings. It never sends a request.
 func Passive(t Target) []Issue {
 	req := parseMessage(t.RequestRaw)
 	resp := parseMessage(t.ResponseRaw)
+	resp.bodyLow = lowerForScan(resp)
 	var out []Issue
 	for _, check := range passiveChecks {
 		out = append(out, check(t, req, resp)...)
 	}
 	return out
+}
+
+// binaryContentTypes are response content types whose bodies cannot contain the
+// ASCII signatures the body checks look for; their bodies are not scanned.
+var binaryContentTypes = []string{
+	"image/", "video/", "audio/", "font/",
+	"application/octet-stream", "application/pdf", "application/zip", "application/gzip",
+}
+
+// lowerForScan returns a lowercased copy of the response body for the signature
+// checks, once per exchange. It returns "" for clearly-binary content types and
+// caps the scanned length, so a large image/binary body is not copied on every
+// captured exchange.
+func lowerForScan(resp message) string {
+	ct := strings.ToLower(resp.headers.Get("Content-Type"))
+	for _, bin := range binaryContentTypes {
+		if strings.HasPrefix(ct, bin) {
+			return ""
+		}
+	}
+	b := resp.body
+	if len(b) > maxScanBody {
+		b = b[:maxScanBody]
+	}
+	return strings.ToLower(string(b))
 }
 
 // newIssue fills the fields common to a passive finding and computes its
@@ -58,7 +89,7 @@ func checkHSTS(t Target, _, resp message) []Issue {
 		"missing_hsts", "Missing Strict-Transport-Security header", SeverityLow, ConfidenceFirm,
 		"The HTTPS response does not set Strict-Transport-Security (HSTS), so a browser may fall back to plaintext HTTP and be exposed to SSL-stripping.",
 		"", "Send `Strict-Transport-Security: max-age=31536000; includeSubDomains` on all HTTPS responses.",
-		t.Host)}
+		t.Host, t.Path)}
 }
 
 func checkContentTypeOptions(t Target, _, resp message) []Issue {
@@ -70,7 +101,7 @@ func checkContentTypeOptions(t Target, _, resp message) []Issue {
 		"The response does not set `X-Content-Type-Options: nosniff`, allowing browsers to MIME-sniff the body and potentially treat it as a different content type.",
 		resp.headers.Get("X-Content-Type-Options"),
 		"Send `X-Content-Type-Options: nosniff` on responses.",
-		t.Host)}
+		t.Host, t.Path)}
 }
 
 func checkCSP(t Target, _, resp message) []Issue {
@@ -103,27 +134,43 @@ func checkClickjacking(t Target, _, resp message) []Issue {
 func checkInsecureCookies(t Target, _, resp message) []Issue {
 	var out []Issue
 	for _, sc := range resp.headers.Values("Set-Cookie") {
-		name := sc
-		if i := strings.IndexByte(sc, '='); i >= 0 {
-			name = sc[:i]
+		// Parse the attribute list (segments after the name=value pair) so a
+		// cookie name or value containing "secure"/"samesite"/etc. cannot be
+		// mistaken for the attribute being set (e.g. a __Secure-prefixed cookie).
+		segs := strings.Split(sc, ";")
+		name := strings.TrimSpace(segs[0])
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name = name[:i]
 		}
 		name = strings.TrimSpace(name)
-		low := strings.ToLower(sc)
+		var hasSecure, hasHTTPOnly, hasSameSite bool
+		for _, attr := range segs[1:] {
+			a := strings.ToLower(strings.TrimSpace(attr))
+			switch {
+			case a == "secure":
+				hasSecure = true
+			case a == "httponly":
+				hasHTTPOnly = true
+			case strings.HasPrefix(a, "samesite"):
+				hasSameSite = true
+			}
+		}
 		var missing []string
-		if t.Scheme == "https" && !strings.Contains(low, "secure") {
+		secureMissing := t.Scheme == "https" && !hasSecure
+		if secureMissing {
 			missing = append(missing, "Secure")
 		}
-		if !strings.Contains(low, "httponly") {
+		if !hasHTTPOnly {
 			missing = append(missing, "HttpOnly")
 		}
-		if !strings.Contains(low, "samesite") {
+		if !hasSameSite {
 			missing = append(missing, "SameSite")
 		}
 		if len(missing) == 0 {
 			continue
 		}
 		sev := SeverityLow
-		if t.Scheme == "https" && !strings.Contains(low, "secure") {
+		if secureMissing {
 			sev = SeverityMedium
 		}
 		out = append(out, t.newIssue(
@@ -190,7 +237,7 @@ func checkCORS(t Target, req, resp message) []Issue {
 }
 
 func checkDirectoryListing(t Target, _, resp message) []Issue {
-	low := strings.ToLower(string(resp.body))
+	low := resp.bodyLow
 	if !strings.Contains(low, "<title>index of /") && !strings.Contains(low, "directory listing for") {
 		return nil
 	}
@@ -219,7 +266,7 @@ var errorSignatures = []string{
 }
 
 func checkErrorDisclosure(t Target, _, resp message) []Issue {
-	low := strings.ToLower(string(resp.body))
+	low := resp.bodyLow
 	for _, sig := range errorSignatures {
 		if strings.Contains(low, sig) {
 			return []Issue{t.newIssue(
@@ -232,12 +279,14 @@ func checkErrorDisclosure(t Target, _, resp message) []Issue {
 	return nil
 }
 
+var passwordInputRe = regexp.MustCompile(`type\s*=\s*['"]?password`)
+
 func checkPasswordOverHTTP(t Target, _, resp message) []Issue {
 	if t.Scheme != "http" || !isHTML(resp.headers) {
 		return nil
 	}
-	low := strings.ToLower(string(resp.body))
-	if !strings.Contains(low, `type="password"`) && !strings.Contains(low, "type=password") {
+	// Tolerate single/double/unquoted attributes and whitespace around '='.
+	if !passwordInputRe.MatchString(resp.bodyLow) {
 		return nil
 	}
 	return []Issue{t.newIssue(
