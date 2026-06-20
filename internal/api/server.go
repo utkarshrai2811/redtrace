@@ -16,8 +16,10 @@ import (
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
+	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/scope"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
+	"github.com/utkarshrai2811/redtrace/internal/storage/models"
 )
 
 // Config configures the API server.
@@ -46,6 +48,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 	}
 	hub := handlers.NewHub()
 	runner := intruder.NewRunner(handlers.IntruderStore{DB: store}, hub.BroadcastIntruder)
+	scan := scanner.NewScanner(handlers.ScannerStore{DB: store}, hub.BroadcastScanner)
 	a := &handlers.API{
 		Store:       store,
 		Scope:       sc,
@@ -55,6 +58,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Hub:         hub,
 		Repeater:    repeater.New(),
 		Intruder:    runner,
+		Scanner:     scan,
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,
@@ -79,6 +83,12 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 // this to proxy.Proxy.OnExchange.
 func (s *Server) PublishExchange(summary storage.RequestSummary) {
 	s.api.Hub.BroadcastTraffic(summary)
+}
+
+// ScanExchange passively scans a captured exchange. Wire this to
+// proxy.Proxy.OnExchangeStored.
+func (s *Server) ScanExchange(ex *models.Exchange) {
+	s.api.ScanExchange(ex)
 }
 
 // Run binds the configured address and serves until ctx is cancelled.
@@ -107,9 +117,11 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		// Cancel in-flight Intruder attacks first so they stop firing requests and
-		// record a terminal status while the DB is still open, then drain HTTP.
+		// Cancel in-flight Intruder attacks and Scanner runs first so they stop
+		// firing requests and record a terminal status while the DB is still open,
+		// then drain HTTP.
 		s.api.Intruder.Shutdown(shutdownCtx)
+		s.api.Scanner.Shutdown(shutdownCtx)
 		_ = s.server.Shutdown(shutdownCtx)
 	}()
 

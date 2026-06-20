@@ -80,6 +80,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("init api: %w", err)
 	}
 	px.OnExchange = srv.PublishExchange
+	px.OnExchangeStored = srv.ScanExchange
 
 	printBanner(cfg)
 

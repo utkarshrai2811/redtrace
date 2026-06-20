@@ -68,6 +68,10 @@ type Proxy struct {
 	// OnExchange, if set, is called with a summary of every captured exchange.
 	OnExchange func(storage.RequestSummary)
 
+	// OnExchangeStored, if set, is called with the fully stored exchange (raw
+	// bytes included) after capture — used by the passive scanner.
+	OnExchangeStored func(*models.Exchange)
+
 	server  *http.Server
 	baseCtx context.Context // cancelled on shutdown; parents held-item contexts
 }
@@ -472,6 +476,9 @@ func (p *Proxy) persist(req *http.Request, reqBody, rawReq []byte, resp *http.Re
 		}
 		if p.OnExchange != nil {
 			p.OnExchange(summaryOf(reqModel, respModel))
+		}
+		if p.OnExchangeStored != nil {
+			p.OnExchangeStored(ex)
 		}
 	}()
 }

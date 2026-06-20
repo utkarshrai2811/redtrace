@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
+	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
 
@@ -126,6 +127,11 @@ func (h *Hub) BroadcastIntercept(state InterceptState) {
 // BroadcastIntruder pushes an Intruder attack progress update.
 func (h *Hub) BroadcastIntruder(update intruder.Update) {
 	h.Broadcast("intruder", update)
+}
+
+// BroadcastScanner pushes a Scanner finding or active-scan progress update.
+func (h *Hub) BroadcastScanner(update scanner.Update) {
+	h.Broadcast("scanner", update)
 }
 
 func (h *Hub) remove(c *wsClient) {

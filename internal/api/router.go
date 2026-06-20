@@ -27,6 +27,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/requests/{id}", a.DeleteRequest)
 	mux.HandleFunc("POST /api/requests/{id}/send-to-repeater", a.SendToRepeater)
 	mux.HandleFunc("POST /api/requests/{id}/send-to-intruder", a.SendToIntruder)
+	mux.HandleFunc("POST /api/requests/{id}/send-to-scanner", a.SendToScanner)
 	mux.HandleFunc("GET /api/hosts", a.Hosts)
 
 	// Scope
@@ -61,6 +62,18 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/intruder/attacks/{id}/start", a.StartIntruderAttack)
 	mux.HandleFunc("POST /api/intruder/attacks/{id}/stop", a.StopIntruderAttack)
 	mux.HandleFunc("GET /api/intruder/results/{id}", a.GetIntruderResult)
+
+	// Scanner
+	mux.HandleFunc("GET /api/scanner/issues", a.ListScanIssues)
+	mux.HandleFunc("DELETE /api/scanner/issues", a.ClearScanIssues)
+	mux.HandleFunc("GET /api/scanner/issues/{id}", a.GetScanIssue)
+	mux.HandleFunc("GET /api/scanner/tasks", a.ListScanTasks)
+	mux.HandleFunc("POST /api/scanner/tasks", a.CreateScanTask)
+	mux.HandleFunc("GET /api/scanner/tasks/{id}", a.GetScanTask)
+	mux.HandleFunc("PUT /api/scanner/tasks/{id}", a.UpdateScanTask)
+	mux.HandleFunc("DELETE /api/scanner/tasks/{id}", a.DeleteScanTask)
+	mux.HandleFunc("POST /api/scanner/tasks/{id}/start", a.StartScanTask)
+	mux.HandleFunc("POST /api/scanner/tasks/{id}/stop", a.StopScanTask)
 
 	// Repeater
 	mux.HandleFunc("GET /api/repeater/tabs", a.ListRepeaterTabs)

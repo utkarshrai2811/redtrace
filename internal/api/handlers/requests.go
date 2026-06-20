@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
+	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 	"github.com/utkarshrai2811/redtrace/internal/storage/models"
 )
@@ -195,6 +196,44 @@ func (a *API) SendToIntruder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toAttackView(attack))
+}
+
+// SendToScanner handles POST /api/requests/{id}/send-to-scanner, creating an
+// active-scan task seeded from a captured request. The operator then launches it
+// to probe the request's parameters.
+func (a *API) SendToScanner(w http.ResponseWriter, r *http.Request) {
+	ex, err := a.Store.GetExchange(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such request")
+		return
+	}
+	if err != nil {
+		a.serverError(w, "get_failed", err)
+		return
+	}
+	req := ex.Request
+	port := req.Port
+	if port == 0 {
+		if req.Scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+	task := &models.ScanTask{
+		ID:          storage.NewID(),
+		Name:        req.Method + " " + req.Path,
+		Scheme:      req.Scheme,
+		Host:        fmt.Sprintf("%s:%d", req.Host, port),
+		Template:    req.Raw,
+		HTTPVersion: "HTTP/1.1",
+		Status:      scanner.StatusPending,
+	}
+	if err := a.Store.CreateScanTask(r.Context(), task); err != nil {
+		a.serverError(w, "create_failed", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toScanTaskView(task))
 }
 
 func atoiDefault(s string, def int) int {
