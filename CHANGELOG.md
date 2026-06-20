@@ -23,6 +23,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history. Attacks and results persist (migration 0004).
 
 ### Fixed
+- Post-Phase-3 (Intruder) review pass:
+  - **Lifecycle:** starting an attack that is already running is rejected
+    (409) instead of launching a second engine that wiped the first run's
+    results and orphaned an uncancellable goroutine; in-flight attacks are now
+    cancelled and drained on server shutdown, and attacks left `running` by a
+    crash are reconciled to `stopped` on startup.
+  - **Live results:** a result streamed over the WebSocket now carries the same
+    id as its stored row, so it can be opened (and keys/selection work) while
+    the attack is still running.
+  - **Payload generation:** a Cluster bomb's request count is overflow-safe and
+    bounded, and an unknown attack type is reported as such rather than as
+    "generates no requests".
+  - **Performance:** the persisted progress counter is throttled (not written
+    per request); the request transport keeps per-host keep-alive connections so
+    a concurrent attack stops re-handshaking TLS every request; the results
+    table inserts in order and memoizes rows so a large live run no longer
+    re-sorts and re-renders everything on every update.
+  - **UI:** Start is gated on the projected request count (so pitchfork/cluster
+    bomb with an empty per-position set can't be started), the count is shown
+    before launch, the concurrency input is clamped to the real 64-worker cap,
+    the anomaly highlight needs a genuine majority baseline (no more flagging
+    every row), and the attack delete control is visible to keyboard focus.
 - Interception now only holds in-scope traffic; bodyless (HEAD/204/304)
   responses and >10 MB bodies are handled correctly; CORS is restricted to
   loopback origins with a DNS-rebinding guard; assorted UI/UX and a11y fixes.
