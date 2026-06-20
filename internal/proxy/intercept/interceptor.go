@@ -112,11 +112,34 @@ func (i *Interceptor) InterceptResponses() bool {
 }
 
 // SetInterceptResponses controls whether responses are held when interception
-// is enabled.
+// is enabled. Turning it off forwards any responses already in the queue, so
+// in-flight traffic is never stranded behind a toggle (mirrors SetEnabled).
 func (i *Interceptor) SetInterceptResponses(on bool) {
 	i.mu.Lock()
 	i.interceptResponses = on
+	var release []*Held
+	if !on {
+		kept := make([]string, 0, len(i.order))
+		for _, id := range i.order {
+			h := i.queue[id]
+			if h.Direction == DirResponse {
+				release = append(release, h)
+				delete(i.queue, id)
+				continue
+			}
+			kept = append(kept, id)
+		}
+		i.order = kept
+	}
+	notify := i.notify
 	i.mu.Unlock()
+
+	for _, h := range release {
+		h.decision <- Decision{Action: ActionForward}
+	}
+	if len(release) > 0 && notify != nil {
+		notify()
+	}
 }
 
 // Hold blocks until the operator resolves the item, returning the Decision. If

@@ -68,7 +68,8 @@ type Proxy struct {
 	// OnExchange, if set, is called with a summary of every captured exchange.
 	OnExchange func(storage.RequestSummary)
 
-	server *http.Server
+	server  *http.Server
+	baseCtx context.Context // cancelled on shutdown; parents held-item contexts
 }
 
 // New constructs a Proxy. scope, rules, and interceptor may be shared with the
@@ -121,6 +122,7 @@ func (p *Proxy) Run(ctx context.Context) error {
 
 // Serve serves the proxy on ln until ctx is cancelled or the server fails.
 func (p *Proxy) Serve(ctx context.Context, ln net.Listener) error {
+	p.baseCtx = ctx
 	p.server = &http.Server{
 		Handler:           http.HandlerFunc(p.ServeHTTP),
 		ReadHeaderTimeout: 30 * time.Second,
@@ -195,6 +197,13 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 // serveTunnel reads HTTP requests off an established (decrypted) connection and
 // proxies each one, supporting keep-alive and protocol upgrades.
 func (p *Proxy) serveTunnel(conn net.Conn, authority, scheme string) {
+	// Decrypted tunnel requests carry no context of their own (http.ReadRequest
+	// leaves it nil), so derive one from the connection. It is cancelled when
+	// the tunnel closes and is parented on the proxy's base context, so held
+	// items are released on shutdown instead of blocking their goroutines.
+	connCtx, cancel := context.WithCancel(p.connContext())
+	defer cancel()
+
 	br := bufio.NewReader(conn)
 	for {
 		req, err := http.ReadRequest(br)
@@ -209,26 +218,76 @@ func (p *Proxy) serveTunnel(conn net.Conn, authority, scheme string) {
 			return
 		}
 
-		resp, respBody, stream := p.handle(req.Context(), req, body, scheme, authority)
-		if _, err := conn.Write(rawResponseHead(resp)); err != nil {
-			if stream != nil {
-				_ = resp.Body.Close()
-			}
+		reqCtx, reqCancel := context.WithCancel(connCtx)
+		// When interception is on, a request/response may be held; watch the
+		// connection so a held item is released (dropped) if the client
+		// disconnects mid-hold instead of blocking forever.
+		var stop func()
+		if p.interceptor.Enabled() {
+			stop = p.watchClientClose(conn, br, reqCancel)
+		}
+		resp, respBody, stream := p.handle(reqCtx, req, body, scheme, authority)
+		if stop != nil {
+			stop()
+		}
+
+		ok := p.writeTunnelResponse(conn, resp, respBody, stream)
+		reqCancel()
+		if !ok || req.Close || resp.Close {
 			return
 		}
+	}
+}
+
+// writeTunnelResponse writes resp to the raw (decrypted) tunnel connection. It
+// returns false when the connection must be closed: on a write error, or after
+// a streamed body whose framing is not keep-alive-safe.
+func (p *Proxy) writeTunnelResponse(conn net.Conn, resp *http.Response, respBody []byte, stream io.Reader) bool {
+	if _, err := conn.Write(rawResponseHead(resp)); err != nil {
 		if stream != nil {
-			_, _ = io.Copy(conn, stream)
 			_ = resp.Body.Close()
-			return // streamed body: framing isn't keep-alive-safe, so close
 		}
-		if len(respBody) > 0 {
-			if _, err := conn.Write(respBody); err != nil {
-				return
-			}
+		return false
+	}
+	if stream != nil {
+		_, _ = io.Copy(conn, stream)
+		_ = resp.Body.Close()
+		return false
+	}
+	if len(respBody) > 0 {
+		if _, err := conn.Write(respBody); err != nil {
+			return false
 		}
-		if req.Close || resp.Close {
-			return
+	}
+	return true
+}
+
+// connContext returns the proxy's base context (cancelled on shutdown), or the
+// background context if the proxy was not started via Serve.
+func (p *Proxy) connContext() context.Context {
+	if p.baseCtx != nil {
+		return p.baseCtx
+	}
+	return context.Background()
+}
+
+// watchClientClose cancels via cancel() if the client closes the tunnel while a
+// request/response is held. It peeks the connection without consuming any
+// buffered (pipelined) bytes; the returned stop must be called before the read
+// loop touches br again. A stop-induced read deadline only triggers a now-moot
+// cancel, so it is harmless.
+func (p *Proxy) watchClientClose(conn net.Conn, br *bufio.Reader, cancel context.CancelFunc) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := br.Peek(1); err != nil {
+			cancel()
 		}
+	}()
+	return func() {
+		_ = conn.SetReadDeadline(time.Now())
+		<-done
+		_ = conn.SetReadDeadline(time.Time{})
 	}
 }
 
@@ -252,9 +311,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = resp.Body.Close() }()
 	}
 
-	for k := range hopByHop {
-		resp.Header.Del(hopByHop[k])
-	}
+	// handle() already strips hop-by-hop response headers.
 	copyHeader(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	if stream != nil {
@@ -269,15 +326,20 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 // large to buffer, a stream to copy verbatim (stream != nil). respBody is nil
 // for bodyless responses (HEAD/204/304/1xx).
 func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, scheme, authority string) (*http.Response, []byte, io.Reader) {
-	host, port := splitAuthority(authority, scheme)
+	req = req.WithContext(ctx)
 	req.URL.Scheme = scheme
 	req.URL.Host = authority
 	if req.Host == "" {
 		req.Host = authority
 	}
-	inScope := p.scope.InScope(host, req.URL.Path)
 
 	reqBody = p.rules.ApplyRequest(req, reqBody)
+
+	// Resolve the destination after match & replace: a URL/Host-rewriting rule
+	// can retarget the request, so scope-gating and the stored metadata must
+	// reflect the host/path actually contacted, not the original.
+	host, port := splitAuthority(req.URL.Host, scheme)
+	inScope := p.scope.InScope(host, req.URL.Path)
 
 	// Manual interception of the request — only for in-scope traffic, so
 	// background and out-of-scope requests are never held in the queue.
@@ -291,7 +353,7 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 		case intercept.ActionForward:
 			if d.Raw != nil {
 				if nr, nb, err := reparseRequest(d.Raw, scheme, authority); err == nil {
-					req, reqBody = nr, nb
+					req, reqBody = nr.WithContext(ctx), nb
 					rawReq = d.Raw
 				}
 			}
@@ -305,6 +367,13 @@ func (p *Proxy) handle(ctx context.Context, req *http.Request, reqBody []byte, s
 	if err != nil {
 		p.logger.Debug("upstream error", "url", req.URL.String(), "err", err)
 		return synthResponse(http.StatusBadGateway, "RedTrace upstream error: "+err.Error())
+	}
+
+	// Strip hop-by-hop response headers here so both the plain-HTTP and the
+	// HTTPS-tunnel paths behave identically (the tunnel serializes headers
+	// verbatim, so handleHTTP stripping alone would leave them on HTTPS traffic).
+	for _, h := range hopByHop {
+		resp.Header.Del(h)
 	}
 
 	// Bodyless responses must carry neither a body nor a fabricated length.
@@ -519,8 +588,13 @@ func decompress(resp *http.Response, body []byte) []byte {
 	}
 	defer func() { _ = reader.Close() }()
 
-	out, err := io.ReadAll(io.LimitReader(reader, int64(maxCapturedBody)))
-	if err != nil {
+	// Read one byte past the cap to detect a body whose decompressed size exceeds
+	// what we buffer. A highly compressible body (small on the wire, huge decoded)
+	// would otherwise be silently truncated and re-framed with a wrong length, so
+	// in that case we forward the original compressed bytes verbatim instead —
+	// Content-Encoding stays intact and the client decodes them itself.
+	out, err := io.ReadAll(io.LimitReader(reader, int64(maxCapturedBody)+1))
+	if err != nil || len(out) > maxCapturedBody {
 		return body
 	}
 	resp.Header.Del("Content-Encoding")

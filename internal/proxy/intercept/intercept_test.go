@@ -144,3 +144,55 @@ func TestRuleSet_DisabledRuleIgnored(t *testing.T) {
 		t.Errorf("disabled rule applied: %q", got)
 	}
 }
+
+func TestInterceptor_TogglingResponsesForwardsHeldResponses(t *testing.T) {
+	ic := NewInterceptor(func() string { return "r" })
+	ic.SetEnabled(true)
+	ic.SetInterceptResponses(true)
+
+	decided := make(chan Decision, 1)
+	go func() { decided <- ic.Hold(context.Background(), &Held{Direction: DirResponse}) }()
+	time.Sleep(50 * time.Millisecond)
+	if len(ic.Queue()) != 1 {
+		t.Fatalf("expected the response to be held, queue=%d", len(ic.Queue()))
+	}
+
+	ic.SetInterceptResponses(false) // must forward the held response, not strand it
+	select {
+	case d := <-decided:
+		if d.Action != ActionForward {
+			t.Errorf("got %q, want forward", d.Action)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("toggling responses off did not release the held response")
+	}
+	if len(ic.Queue()) != 0 {
+		t.Errorf("queue not empty after toggle: %d", len(ic.Queue()))
+	}
+}
+
+func TestInterceptor_ContextCancelDrops(t *testing.T) {
+	ic := NewInterceptor(func() string { return "c" })
+	ic.SetEnabled(true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	decided := make(chan Decision, 1)
+	go func() { decided <- ic.Hold(ctx, &Held{Direction: DirRequest}) }()
+	time.Sleep(50 * time.Millisecond)
+	if len(ic.Queue()) != 1 {
+		t.Fatalf("expected the request to be held, queue=%d", len(ic.Queue()))
+	}
+
+	cancel() // a cancelled context (e.g. client disconnect / shutdown) drops the item
+	select {
+	case d := <-decided:
+		if d.Action != ActionDrop {
+			t.Errorf("got %q, want drop", d.Action)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("context cancellation did not release the held item")
+	}
+	if len(ic.Queue()) != 0 {
+		t.Errorf("queue not empty after cancel: %d", len(ic.Queue()))
+	}
+}

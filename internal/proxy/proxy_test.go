@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -330,5 +332,45 @@ func TestReadCapped(t *testing.T) {
 	all, _ := io.ReadAll(full)
 	if string(all) != "abcdefghij" {
 		t.Errorf("full replay = %q, want abcdefghij", all)
+	}
+}
+
+func TestDecompress_OverCapForwardsCompressedVerbatim(t *testing.T) {
+	orig := maxCapturedBody
+	maxCapturedBody = 1024
+	defer func() { maxCapturedBody = orig }()
+
+	// A body that is small compressed but decompresses past the cap must be
+	// forwarded as-is (Content-Encoding intact), never silently truncated.
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write(bytes.Repeat([]byte("A"), 64*1024))
+	_ = zw.Close()
+	compressed := buf.Bytes()
+
+	resp := &http.Response{Header: http.Header{"Content-Encoding": {"gzip"}}}
+	out := decompress(resp, compressed)
+
+	if !bytes.Equal(out, compressed) {
+		t.Errorf("over-cap body was altered: got %d bytes, want the %d compressed bytes", len(out), len(compressed))
+	}
+	if resp.Header.Get("Content-Encoding") != "gzip" {
+		t.Error("Content-Encoding was stripped despite forwarding compressed bytes")
+	}
+}
+
+func TestDecompress_UnderCapDecodes(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte("plaintext"))
+	_ = zw.Close()
+
+	resp := &http.Response{Header: http.Header{"Content-Encoding": {"gzip"}}}
+	out := decompress(resp, buf.Bytes())
+	if string(out) != "plaintext" {
+		t.Errorf("decompress = %q, want plaintext", out)
+	}
+	if resp.Header.Get("Content-Encoding") != "" {
+		t.Error("Content-Encoding should be removed after successful decompression")
 	}
 }
