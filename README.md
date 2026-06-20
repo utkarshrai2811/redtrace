@@ -33,7 +33,7 @@ web UI.
 | Decoder / Comparer | ✅ | ✅ | ✅ |
 | Target site map | ✅ | ✅ | ✅ |
 | Intruder (all attack types, unthrottled) | ✅ | ⏳ throttled | ✅ |
-| Active + passive scanner | 🔜 | ❌ | ✅ |
+| Active + passive scanner | ✅ | ❌ | ✅ |
 | Out-of-band (Collaborator) | 🔜 | ❌ | ✅ |
 | AI-assisted triage & payloads | 🔜 | ❌ | ❌ |
 | CI/CD scan mode + SARIF export | 🔜 | ❌ | ⏳ |
@@ -105,8 +105,8 @@ RedTrace is built in phases. See [`docs/phases/`](docs/phases) for detail.
 1. Foundation & core proxy — ✅ done
 2. Core analysis tools (Repeater, Decoder, Comparer, Site Map) — ✅ done
 3. Intruder (Sniper / Battering ram / Pitchfork / Cluster bomb) — ✅ done
-4. Scanner (passive + active, OWASP Top 10) — _next_
-5. Crawler & Sequencer
+4. Scanner (passive + active, OWASP Top 10) — ✅ done
+5. Crawler & Sequencer — _next_
 6. Out-of-band / Collaborator
 7. AI integration
 8. CI/CD integration & team collaboration

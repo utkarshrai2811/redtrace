@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (unthrottled) runner with live results streamed over the WebSocket; a results
   table with anomaly highlighting; and a Send-to-Intruder action from proxy
   history. Attacks and results persist (migration 0004).
+- Phase 4: Scanner — a passive analyzer that flags issues in captured in-scope
+  traffic (missing security headers, insecure cookies, CORS misconfiguration,
+  technology/version disclosure, directory listing, error/stack-trace leakage,
+  cleartext password forms) and an active scanner that probes a request's query
+  and form insertion points for reflected XSS, error-based SQL injection, path
+  traversal, open redirect, server-side template injection, and OS command
+  injection. Findings are deduplicated, severity-ranked, and streamed live over
+  the WebSocket; active scans run as a bounded, cancellable background job. Adds
+  a Send-to-Scanner action from proxy history. Tasks and findings persist
+  (migration 0005).
 
 ### Fixed
 - Post-Phase-3 (Intruder) review pass:
