@@ -69,3 +69,21 @@ func TestDiff_EmptySide(t *testing.T) {
 		t.Errorf("empty-vs-content = %+v", segs)
 	}
 }
+
+func TestDiffLines_LargeInputFallsBack(t *testing.T) {
+	// Two inputs whose token product exceeds maxCells must not allocate the full
+	// DP table; the diff falls back to whole-delete + whole-insert, and the two
+	// sides still reassemble exactly.
+	var a, b strings.Builder
+	for i := 0; i < 2100; i++ {
+		a.WriteString("alpha line\n")
+		b.WriteString("beta line\n")
+	}
+	segs := DiffLines(a.String(), b.String())
+	if got := reassemble(segs, Delete); got != a.String() {
+		t.Errorf("left reassembly mismatch (len %d vs %d)", len(got), a.Len())
+	}
+	if got := reassemble(segs, Insert); got != b.String() {
+		t.Errorf("right reassembly mismatch (len %d vs %d)", len(got), b.Len())
+	}
+}

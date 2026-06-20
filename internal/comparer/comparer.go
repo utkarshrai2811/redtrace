@@ -50,13 +50,29 @@ func splitLines(s string) []string {
 
 // diffTokens runs an LCS diff over token slices and coalesces adjacent
 // same-kind tokens into segments.
+// maxCells bounds the O(la*lb) DP table so a diff of two large inputs cannot
+// allocate gigabytes. Beyond it (or when a side is empty) we fall back to a
+// whole-delete + whole-insert diff. LCS lengths fit comfortably in int32.
+const maxCells = 4 << 20 // ~4M cells (~16 MiB at int32)
+
 func diffTokens(a, b []string) []Segment {
 	la, lb := len(a), len(b)
 
+	if la == 0 || lb == 0 || int64(la)*int64(lb) > maxCells {
+		var segs []Segment
+		if s := strings.Join(a, ""); s != "" {
+			segs = append(segs, Segment{Op: Delete, Text: s})
+		}
+		if s := strings.Join(b, ""); s != "" {
+			segs = append(segs, Segment{Op: Insert, Text: s})
+		}
+		return segs
+	}
+
 	// dp[i][j] = LCS length of a[i:] and b[j:].
-	dp := make([][]int, la+1)
+	dp := make([][]int32, la+1)
 	for i := range dp {
-		dp[i] = make([]int, lb+1)
+		dp[i] = make([]int32, lb+1)
 	}
 	for i := la - 1; i >= 0; i-- {
 		for j := lb - 1; j >= 0; j-- {

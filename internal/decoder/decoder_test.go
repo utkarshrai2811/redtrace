@@ -1,6 +1,7 @@
 package decoder
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -107,5 +108,28 @@ func TestDetect(t *testing.T) {
 				t.Errorf("Detect(%q) = (%q, %v), want (%q, %v)", tt.input, got, ok, tt.want, tt.ok)
 			}
 		})
+	}
+}
+
+func TestGzipDecompress_RejectsBomb(t *testing.T) {
+	// Lower the cap so the test stays cheap; a blob whose output exceeds it must
+	// be rejected rather than buffered into memory.
+	orig := maxDecompressed
+	maxDecompressed = 1024
+	defer func() { maxDecompressed = orig }()
+
+	bomb, err := Apply(GzipCompress, bytes.Repeat([]byte("A"), 64*1024))
+	if err != nil {
+		t.Fatalf("compress: %v", err)
+	}
+	if _, err := Apply(GzipDecompress, bomb); err == nil {
+		t.Fatal("expected oversized gzip to be rejected, got nil error")
+	}
+
+	// A small payload under the cap still round-trips.
+	small, _ := Apply(GzipCompress, []byte("hello"))
+	out, err := Apply(GzipDecompress, small)
+	if err != nil || string(out) != "hello" {
+		t.Fatalf("small gzip round-trip: out=%q err=%v", out, err)
 	}
 }

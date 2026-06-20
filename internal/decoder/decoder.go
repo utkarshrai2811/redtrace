@@ -107,7 +107,9 @@ func Detect(input []byte) (Op, bool) {
 	if isHex(s) {
 		return HexDecode, true
 	}
-	if _, err := decodeBase64Tolerant(s); err == nil && isMostlyPrintable(s) {
+	// Decode once and inspect the bytes, rather than decoding to test validity
+	// and again inside the printable check.
+	if b, err := decodeBase64Tolerant(s); err == nil && mostlyPrintable(b) {
 		return Base64Decode, true
 	}
 	return "", false
@@ -137,15 +139,22 @@ func gzipCompress(input []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// maxDecompressed bounds gzip output so a small "zip-bomb" blob cannot expand
+// into gigabytes and exhaust memory. It is a var only so tests can lower it.
+var maxDecompressed = 64 << 20 // 64 MiB
+
 func gzipDecompress(input []byte) ([]byte, error) {
 	zr, err := gzip.NewReader(bytes.NewReader(input))
 	if err != nil {
 		return nil, fmt.Errorf("gzip: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
-	out, err := io.ReadAll(zr)
+	out, err := io.ReadAll(io.LimitReader(zr, int64(maxDecompressed)+1))
 	if err != nil {
 		return nil, fmt.Errorf("gzip: %w", err)
+	}
+	if len(out) > maxDecompressed {
+		return nil, fmt.Errorf("gzip: decompressed output exceeds %d bytes", maxDecompressed)
 	}
 	return out, nil
 }
@@ -197,9 +206,8 @@ func isHex(s string) bool {
 	return err == nil
 }
 
-func isMostlyPrintable(s string) bool {
-	b, err := decodeBase64Tolerant(s)
-	if err != nil || len(b) == 0 {
+func mostlyPrintable(b []byte) bool {
+	if len(b) == 0 {
 		return false
 	}
 	printable := 0
