@@ -10,7 +10,7 @@ import (
 func (a *API) GetSitemap(w http.ResponseWriter, r *http.Request) {
 	tree, err := a.Store.Sitemap(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "sitemap_failed", err.Error())
+		a.serverError(w, "sitemap_failed", err)
 		return
 	}
 	if tree == nil {
@@ -38,7 +38,7 @@ func (a *API) PutSitemapNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.Store.UpsertSitemapNote(r.Context(), body.Host, body.Path, body.Note, body.Tags); err != nil {
-		writeError(w, http.StatusInternalServerError, "note_failed", err.Error())
+		a.serverError(w, "note_failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

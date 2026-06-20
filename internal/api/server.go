@@ -92,6 +92,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	s.server = &http.Server{
 		Handler:           s.routes(),
 		ReadHeaderTimeout: 30 * time.Second,
+		// Bound a slow request body (slowloris) and idle keep-alive connections.
+		// No WriteTimeout: the /ws/traffic stream is long-lived and the hub
+		// manages its own read/write deadlines after the upgrade.
+		ReadTimeout:    120 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	go func() { //nolint:gosec // G118: the shutdown watcher must use a fresh context, not the serve context

@@ -52,7 +52,7 @@ func (a *API) ListRequests(w http.ResponseWriter, r *http.Request) {
 
 	rows, total, err := a.Store.ListRequests(r.Context(), filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_failed", err.Error())
+		a.serverError(w, "list_failed", err)
 		return
 	}
 	if rows == nil {
@@ -71,7 +71,7 @@ func (a *API) GetRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		a.serverError(w, "get_failed", err)
 		return
 	}
 
@@ -91,7 +91,7 @@ func (a *API) DeleteRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed", err.Error())
+		a.serverError(w, "delete_failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -100,7 +100,7 @@ func (a *API) DeleteRequest(w http.ResponseWriter, r *http.Request) {
 // ClearRequests handles DELETE /api/requests, clearing the entire history.
 func (a *API) ClearRequests(w http.ResponseWriter, r *http.Request) {
 	if err := a.Store.ClearRequests(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "clear_failed", err.Error())
+		a.serverError(w, "clear_failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -110,7 +110,7 @@ func (a *API) ClearRequests(w http.ResponseWriter, r *http.Request) {
 func (a *API) Hosts(w http.ResponseWriter, r *http.Request) {
 	hosts, err := a.Store.Hosts(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "hosts_failed", err.Error())
+		a.serverError(w, "hosts_failed", err)
 		return
 	}
 	if hosts == nil {
@@ -128,7 +128,7 @@ func (a *API) SendToRepeater(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		a.serverError(w, "get_failed", err)
 		return
 	}
 	req := ex.Request
@@ -149,7 +149,7 @@ func (a *API) SendToRepeater(w http.ResponseWriter, r *http.Request) {
 		HTTPVersion: "HTTP/1.1",
 	}
 	if err := a.Store.CreateRepeaterTab(r.Context(), tab); err != nil {
-		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
+		a.serverError(w, "create_failed", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTabView(tab))

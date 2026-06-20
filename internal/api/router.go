@@ -6,6 +6,10 @@ import (
 	"github.com/utkarshrai2811/redtrace/internal/api/middleware"
 )
 
+// maxRequestBody caps any single request body so a large POST cannot exhaust
+// memory (decode/comparer inputs and Repeater raw requests are buffered fully).
+const maxRequestBody = 32 << 20 // 32 MiB
+
 // routes registers all REST and WebSocket routes and wraps them in middleware.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -65,6 +69,7 @@ func (s *Server) routes() http.Handler {
 	return middleware.Chain(mux,
 		middleware.LocalGuard(s.token),
 		middleware.CORS,
+		middleware.BodyLimit(maxRequestBody),
 		middleware.Logger(s.log),
 		middleware.Auth(s.token),
 	)

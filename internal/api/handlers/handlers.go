@@ -56,6 +56,17 @@ func writeError(w http.ResponseWriter, code int, errCode, msg string) {
 	writeJSON(w, code, b)
 }
 
+// serverError logs an internal (5xx) error server-side and returns a generic
+// message to the client, so storage/driver internals (SQL, file paths) are not
+// disclosed over the wire. Reserve verbatim err.Error() for user-actionable 4xx
+// validation and live-network (502) errors.
+func (a *API) serverError(w http.ResponseWriter, errCode string, err error) {
+	if a.Log != nil {
+		a.Log.Error("request failed", "code", errCode, "err", err)
+	}
+	writeError(w, http.StatusInternalServerError, errCode, "internal error")
+}
+
 func decodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()

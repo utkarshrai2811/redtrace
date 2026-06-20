@@ -75,7 +75,7 @@ func (a *API) resolve(w http.ResponseWriter, id string, d intercept.Decision) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "resolve_failed", err.Error())
+		a.serverError(w, "resolve_failed", err)
 		return
 	}
 	a.PublishIntercept()

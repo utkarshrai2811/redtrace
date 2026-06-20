@@ -65,7 +65,7 @@ func (b tabBody) normalized() tabBody {
 func (a *API) ListRepeaterTabs(w http.ResponseWriter, r *http.Request) {
 	tabs, err := a.Store.ListRepeaterTabs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_failed", err.Error())
+		a.serverError(w, "list_failed", err)
 		return
 	}
 	views := make([]tabView, 0, len(tabs))
@@ -88,7 +88,7 @@ func (a *API) CreateRepeaterTab(w http.ResponseWriter, r *http.Request) {
 		Raw: body.Raw, FollowRedirects: body.FollowRedirects, HTTPVersion: body.HTTPVersion,
 	}
 	if err := a.Store.CreateRepeaterTab(r.Context(), tab); err != nil {
-		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
+		a.serverError(w, "create_failed", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTabView(tab))
@@ -102,12 +102,12 @@ func (a *API) GetRepeaterTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		a.serverError(w, "get_failed", err)
 		return
 	}
 	entries, err := a.Store.ListRepeaterHistory(r.Context(), tab.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "history_failed", err.Error())
+		a.serverError(w, "history_failed", err)
 		return
 	}
 	history := make([]historyView, 0, len(entries))
@@ -128,7 +128,7 @@ func (a *API) UpdateRepeaterTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		a.serverError(w, "get_failed", err)
 		return
 	}
 	var body tabBody
@@ -140,7 +140,7 @@ func (a *API) UpdateRepeaterTab(w http.ResponseWriter, r *http.Request) {
 	tab.Name, tab.Scheme, tab.Host = body.Name, body.Scheme, body.Host
 	tab.FollowRedirects, tab.HTTPVersion, tab.Raw = body.FollowRedirects, body.HTTPVersion, body.Raw
 	if err := a.Store.UpdateRepeaterTab(r.Context(), tab); err != nil {
-		writeError(w, http.StatusInternalServerError, "update_failed", err.Error())
+		a.serverError(w, "update_failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toTabView(tab))
@@ -154,7 +154,7 @@ func (a *API) DeleteRepeaterTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed", err.Error())
+		a.serverError(w, "delete_failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -169,7 +169,7 @@ func (a *API) SendRepeaterTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get_failed", err.Error())
+		a.serverError(w, "get_failed", err)
 		return
 	}
 

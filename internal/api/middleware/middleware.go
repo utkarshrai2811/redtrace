@@ -2,7 +2,9 @@
 package middleware
 
 import (
+	"bufio"
 	"crypto/subtle"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -38,6 +40,20 @@ func CORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// BodyLimit caps the request body so a single large POST cannot exhaust memory.
+// The WebSocket handshake hijacks the connection and reads off it directly, so
+// it is exempt.
+func BodyLimit(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil && !strings.HasPrefix(r.URL.Path, "/ws/") {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // LocalGuard blocks requests whose Host header is not a loopback address when no
@@ -94,6 +110,16 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
+// Hijack forwards to the underlying ResponseWriter so the WebSocket upgrade
+// (/ws/traffic) still works when this recorder wraps the writer.
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("middleware: underlying ResponseWriter is not an http.Hijacker")
+	}
+	return hj.Hijack()
+}
+
 // Logger logs each request's method, path, status, and duration.
 func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -113,18 +139,31 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 
 // Auth optionally requires a shared token (Authorization: Bearer <t> or the
 // X-RedTrace-Token header). When token is empty, authentication is disabled.
+//
+// Only /api/ and /ws/ are gated: the web UI and its static assets load without a
+// token (every API call still fails closed, so this is not a hole) — otherwise a
+// token would 401 even index.html and the UI could never prompt for one. Because
+// browsers cannot set headers on a WebSocket handshake, the token may also be
+// passed as a ?token= query parameter on /ws/ routes.
 func Auth(token string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if token == "" {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !requiresAuth(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			provided := r.Header.Get("X-RedTrace-Token")
 			if provided == "" {
 				const prefix = "Bearer "
 				if h := r.Header.Get("Authorization"); len(h) > len(prefix) && h[:len(prefix)] == prefix {
 					provided = h[len(prefix):]
 				}
+			}
+			if provided == "" && strings.HasPrefix(r.URL.Path, "/ws/") {
+				provided = r.URL.Query().Get("token")
 			}
 			if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
 				http.Error(w, `{"error":{"code":"unauthorized","message":"invalid or missing token"}}`, http.StatusUnauthorized)
@@ -133,4 +172,10 @@ func Auth(token string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// requiresAuth reports whether a path is gated by the auth token. The SPA and
+// its assets are served freely; the API and WebSocket are protected.
+func requiresAuth(path string) bool {
+	return strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws/")
 }
