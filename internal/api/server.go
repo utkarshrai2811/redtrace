@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
+	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
@@ -44,6 +45,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		logger = slog.Default()
 	}
 	hub := handlers.NewHub()
+	runner := intruder.NewRunner(handlers.IntruderStore{DB: store}, hub.BroadcastIntruder)
 	a := &handlers.API{
 		Store:       store,
 		Scope:       sc,
@@ -52,6 +54,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Authority:   authority,
 		Hub:         hub,
 		Repeater:    repeater.New(),
+		Intruder:    runner,
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,

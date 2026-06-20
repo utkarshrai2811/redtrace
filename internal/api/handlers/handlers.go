@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
@@ -28,6 +29,7 @@ type API struct {
 	Authority   *cert.Authority
 	Hub         *Hub
 	Repeater    *repeater.Engine
+	Intruder    *intruder.Runner
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger

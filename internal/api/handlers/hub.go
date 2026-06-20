@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 )
 
@@ -120,6 +121,11 @@ func (h *Hub) BroadcastTraffic(s storage.RequestSummary) {
 // BroadcastIntercept pushes the current interception state.
 func (h *Hub) BroadcastIntercept(state InterceptState) {
 	h.Broadcast("intercept", state)
+}
+
+// BroadcastIntruder pushes an Intruder attack progress update.
+func (h *Hub) BroadcastIntruder(update intruder.Update) {
+	h.Broadcast("intruder", update)
 }
 
 func (h *Hub) remove(c *wsClient) {

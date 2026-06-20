@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
 	"github.com/utkarshrai2811/redtrace/internal/storage/models"
 )
@@ -155,9 +157,44 @@ func (a *API) SendToRepeater(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toTabView(tab))
 }
 
-// SendToIntruder is wired but lands in Phase 3.
+// SendToIntruder handles POST /api/requests/{id}/send-to-intruder, creating an
+// Intruder attack draft seeded from a captured request. The operator then marks
+// payload positions and configures payloads before starting it.
 func (a *API) SendToIntruder(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "not_implemented", "Intruder arrives in Phase 3")
+	ex, err := a.Store.GetExchange(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such request")
+		return
+	}
+	if err != nil {
+		a.serverError(w, "get_failed", err)
+		return
+	}
+	req := ex.Request
+	port := req.Port
+	if port == 0 {
+		if req.Scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+	}
+	cfg, _ := json.Marshal(attackConfig{PayloadSets: []intruder.PayloadSet{}, HTTPVersion: "HTTP/1.1"})
+	attack := &models.IntruderAttack{
+		ID:         storage.NewID(),
+		Name:       req.Method + " " + req.Path,
+		Scheme:     req.Scheme,
+		Host:       fmt.Sprintf("%s:%d", req.Host, port),
+		Template:   req.Raw,
+		AttackType: string(intruder.Sniper),
+		Config:     cfg,
+		Status:     intruder.StatusPending,
+	}
+	if err := a.Store.CreateIntruderAttack(r.Context(), attack); err != nil {
+		a.serverError(w, "create_failed", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toAttackView(attack))
 }
 
 func atoiDefault(s string, def int) int {

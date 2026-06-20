@@ -52,6 +52,16 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/decoder/detect", a.DecodeDetect)
 	mux.HandleFunc("POST /api/comparer", a.Compare)
 
+	// Intruder
+	mux.HandleFunc("GET /api/intruder/attacks", a.ListIntruderAttacks)
+	mux.HandleFunc("POST /api/intruder/attacks", a.CreateIntruderAttack)
+	mux.HandleFunc("GET /api/intruder/attacks/{id}", a.GetIntruderAttack)
+	mux.HandleFunc("PUT /api/intruder/attacks/{id}", a.UpdateIntruderAttack)
+	mux.HandleFunc("DELETE /api/intruder/attacks/{id}", a.DeleteIntruderAttack)
+	mux.HandleFunc("POST /api/intruder/attacks/{id}/start", a.StartIntruderAttack)
+	mux.HandleFunc("POST /api/intruder/attacks/{id}/stop", a.StopIntruderAttack)
+	mux.HandleFunc("GET /api/intruder/results/{id}", a.GetIntruderResult)
+
 	// Repeater
 	mux.HandleFunc("GET /api/repeater/tabs", a.ListRepeaterTabs)
 	mux.HandleFunc("POST /api/repeater/tabs", a.CreateRepeaterTab)
