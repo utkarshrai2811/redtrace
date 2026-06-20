@@ -16,6 +16,11 @@ import type {
   RequestDetail,
   RequestFilters,
   RequestListResponse,
+  ScanIssueDetail,
+  ScanIssueView,
+  ScanTaskDetail,
+  ScanTaskInput,
+  ScanTaskView,
   ScopeRule,
   SendResponse,
   SitemapHost,
@@ -313,7 +318,61 @@ export const api = {
     return request<IntruderResultDetail>(`/api/intruder/results/${encodeURIComponent(id)}`);
   },
 
-  // --- Send to Repeater / Intruder (from the proxy) ---
+  // --- Scanner (request/response raw fields are base64) ---
+
+  listScanIssues(): Promise<ScanIssueView[]> {
+    return request<ScanIssueView[]>('/api/scanner/issues');
+  },
+
+  getScanIssue(id: string): Promise<ScanIssueDetail> {
+    return request<ScanIssueDetail>(`/api/scanner/issues/${encodeURIComponent(id)}`);
+  },
+
+  clearScanIssues(): Promise<void> {
+    return request<void>('/api/scanner/issues', { method: 'DELETE' });
+  },
+
+  listScanTasks(): Promise<ScanTaskView[]> {
+    return request<ScanTaskView[]>('/api/scanner/tasks');
+  },
+
+  createScanTask(body: ScanTaskInput): Promise<ScanTaskView> {
+    return request<ScanTaskView>('/api/scanner/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getScanTask(id: string): Promise<ScanTaskDetail> {
+    return request<ScanTaskDetail>(`/api/scanner/tasks/${encodeURIComponent(id)}`);
+  },
+
+  updateScanTask(id: string, body: ScanTaskInput): Promise<ScanTaskView> {
+    return request<ScanTaskView>(`/api/scanner/tasks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteScanTask(id: string): Promise<void> {
+    return request<void>(`/api/scanner/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  startScanTask(id: string): Promise<ScanTaskView> {
+    return request<ScanTaskView>(`/api/scanner/tasks/${encodeURIComponent(id)}/start`, {
+      method: 'POST',
+    });
+  },
+
+  stopScanTask(id: string): Promise<{ stopped: boolean }> {
+    return request<{ stopped: boolean }>(`/api/scanner/tasks/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+    });
+  },
+
+  // --- Send to Repeater / Intruder / Scanner (from the proxy) ---
 
   sendToRepeater(id: string): Promise<TabView> {
     return request<TabView>(`/api/requests/${encodeURIComponent(id)}/send-to-repeater`, {
@@ -323,6 +382,12 @@ export const api = {
 
   sendToIntruder(id: string): Promise<AttackView> {
     return request<AttackView>(`/api/requests/${encodeURIComponent(id)}/send-to-intruder`, {
+      method: 'POST',
+    });
+  },
+
+  sendToScanner(id: string): Promise<ScanTaskView> {
+    return request<ScanTaskView>(`/api/requests/${encodeURIComponent(id)}/send-to-scanner`, {
       method: 'POST',
     });
   },

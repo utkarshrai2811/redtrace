@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useProxyStore } from '../store/proxyStore';
 import { useConnectionStore } from '../store/connectionStore';
 import { useIntruderStore } from '../store/intruderStore';
+import { useScannerStore } from '../store/scannerStore';
 import { getToken } from '../lib/auth';
 import type { WsFrame } from '../lib/types';
 
@@ -17,7 +18,10 @@ function trafficUrl(): string {
 function isWsFrame(value: unknown): value is WsFrame {
   if (typeof value !== 'object' || value === null) return false;
   const t = (value as { type?: unknown }).type;
-  return (t === 'traffic' || t === 'intercept' || t === 'intruder') && 'data' in value;
+  return (
+    (t === 'traffic' || t === 'intercept' || t === 'intruder' || t === 'scanner') &&
+    'data' in value
+  );
 }
 
 /**
@@ -28,15 +32,18 @@ export function useWebSocket(): void {
   const applyTraffic = useProxyStore((s) => s.applyTrafficFrame);
   const applyIntercept = useProxyStore((s) => s.applyInterceptFrame);
   const applyIntruder = useIntruderStore((s) => s.applyUpdate);
+  const applyScanner = useScannerStore((s) => s.applyUpdate);
   const setStatus = useConnectionStore((s) => s.setStatus);
 
   // Refs avoid re-running the effect when store actions change identity.
   const applyTrafficRef = useRef(applyTraffic);
   const applyInterceptRef = useRef(applyIntercept);
   const applyIntruderRef = useRef(applyIntruder);
+  const applyScannerRef = useRef(applyScanner);
   applyTrafficRef.current = applyTraffic;
   applyInterceptRef.current = applyIntercept;
   applyIntruderRef.current = applyIntruder;
+  applyScannerRef.current = applyScanner;
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -62,8 +69,10 @@ export function useWebSocket(): void {
             applyTrafficRef.current(parsed.data);
           } else if (parsed.type === 'intercept') {
             applyInterceptRef.current(parsed.data);
-          } else {
+          } else if (parsed.type === 'intruder') {
             applyIntruderRef.current(parsed.data);
+          } else {
+            applyScannerRef.current(parsed.data);
           }
         } catch {
           // Ignore malformed frames.

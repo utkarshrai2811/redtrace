@@ -139,7 +139,12 @@ export interface IntruderFrame {
   data: IntruderUpdate;
 }
 
-export type WsFrame = TrafficFrame | InterceptFrame | IntruderFrame;
+export interface ScannerFrame {
+  type: 'scanner';
+  data: ScannerUpdate;
+}
+
+export type WsFrame = TrafficFrame | InterceptFrame | IntruderFrame | ScannerFrame;
 
 // Error envelope returned by the backend on failure.
 export interface ApiErrorEnvelope {
@@ -352,4 +357,96 @@ export interface IntruderUpdate {
   total: number;
   /** present on per-request updates, absent on status transitions */
   result?: IntruderResultView;
+}
+
+// --- Scanner (request/response raw fields are base64) ---
+
+export type Severity = 'info' | 'low' | 'medium' | 'high';
+export type Confidence = 'tentative' | 'firm' | 'certain';
+export type ScanOrigin = 'passive' | 'active';
+export type ScanStatus = 'pending' | 'running' | 'completed' | 'stopped' | 'error';
+
+export interface ScanIssueView {
+  id: string;
+  taskId?: string;
+  type: string;
+  name: string;
+  severity: Severity;
+  confidence: Confidence;
+  scheme: string;
+  host: string;
+  port: number;
+  path: string;
+  method: string;
+  param?: string;
+  payload?: string;
+  detail: string;
+  evidence: string;
+  remediation: string;
+  origin: ScanOrigin;
+  createdAt: string;
+}
+
+export interface ScanTaskView {
+  id: string;
+  name: string;
+  scheme: string;
+  host: string;
+  /** base64 of the raw request */
+  template: string;
+  httpVersion: string;
+  followRedirects: boolean;
+  status: ScanStatus;
+  total: number;
+  completed: number;
+  issues: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScanTaskInput {
+  name: string;
+  scheme: string;
+  host: string;
+  template: string;
+  httpVersion: string;
+  followRedirects: boolean;
+}
+
+export interface ScanIssueDetail {
+  issue: ScanIssueView;
+  requestRaw: string;
+  responseRaw: string;
+}
+
+export interface ScanTaskDetail {
+  task: ScanTaskView;
+  issues: ScanIssueView[];
+}
+
+/** A compact issue summary pushed live over the WebSocket (no createdAt). */
+export interface ScanIssueSummary {
+  id: string;
+  type: string;
+  name: string;
+  severity: Severity;
+  confidence: Confidence;
+  scheme: string;
+  host: string;
+  port: number;
+  path: string;
+  method: string;
+  param?: string;
+  origin: ScanOrigin;
+}
+
+/** Progress / issue frame pushed over the WebSocket. */
+export interface ScannerUpdate {
+  kind: 'issue' | 'progress' | 'status';
+  issue?: ScanIssueSummary;
+  taskId?: string;
+  status?: ScanStatus;
+  completed: number;
+  total: number;
+  issues: number;
 }

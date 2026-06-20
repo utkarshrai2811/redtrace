@@ -70,6 +70,19 @@ export function DetailView() {
     }
   };
 
+  const sendToScanner = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api.sendToScanner(selectedId);
+      navigate('/scanner');
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Failed to send to Scanner');
+      setSending(false);
+    }
+  };
+
   const requestData = useMemo(
     () => (detail ? decode(detail.requestRaw) : { ok: true, text: '', bytes: 0 }),
     [detail],
@@ -138,6 +151,15 @@ export function DetailView() {
           className="shrink-0"
         >
           Send to Intruder
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={() => void sendToScanner()}
+          className="shrink-0"
+        >
+          Send to Scanner
         </Button>
       </div>
 
