@@ -144,7 +144,23 @@ export interface ScannerFrame {
   data: ScannerUpdate;
 }
 
-export type WsFrame = TrafficFrame | InterceptFrame | IntruderFrame | ScannerFrame;
+export interface CrawlFrame {
+  type: 'crawl';
+  data: CrawlUpdate;
+}
+
+export interface SequencerFrame {
+  type: 'sequencer';
+  data: SeqUpdate;
+}
+
+export type WsFrame =
+  | TrafficFrame
+  | InterceptFrame
+  | IntruderFrame
+  | ScannerFrame
+  | CrawlFrame
+  | SequencerFrame;
 
 // Error envelope returned by the backend on failure.
 export interface ApiErrorEnvelope {
@@ -449,4 +465,124 @@ export interface ScannerUpdate {
   completed: number;
   total: number;
   issues: number;
+}
+
+// --- Crawler (raw byte fields are base64 strings; CrawlTask/CrawlURL have no raw fields) ---
+
+export type CrawlStatus = 'pending' | 'running' | 'completed' | 'stopped' | 'error';
+
+export interface CrawlTaskView {
+  id: string;
+  name: string;
+  seed: string;
+  scheme: string;
+  host: string;
+  maxDepth: number;
+  maxPages: number;
+  status: CrawlStatus;
+  pages: number;
+  found: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CrawlURLView {
+  id: string;
+  taskId: string;
+  url: string;
+  method: string;
+  statusCode: number;
+  length: number;
+  contentType: string;
+  depth: number;
+  createdAt: string;
+}
+
+export interface CrawlTaskInput {
+  name: string;
+  seed: string;
+  maxDepth: number;
+  maxPages: number;
+}
+
+export interface CrawlTaskDetail {
+  task: CrawlTaskView;
+  urls: CrawlURLView[];
+}
+
+export interface CrawlPageSummary {
+  url: string;
+  statusCode: number;
+  contentType: string;
+  depth: number;
+}
+
+export interface CrawlUpdate {
+  kind: 'page' | 'progress' | 'status';
+  taskId?: string;
+  status?: CrawlStatus;
+  pages: number;
+  found: number;
+  page?: CrawlPageSummary;
+}
+
+// --- Sequencer (template is base64 of the raw request) ---
+
+export type SeqStatus = 'pending' | 'running' | 'completed' | 'stopped' | 'error';
+export type SeqSource = 'cookie' | 'regex';
+export type SeqQuality = 'poor' | 'reasonable' | 'good' | 'excellent';
+
+export interface SeqTaskView {
+  id: string;
+  name: string;
+  scheme: string;
+  host: string;
+  /** base64 of the raw request */
+  template: string;
+  httpVersion: string;
+  source: SeqSource;
+  selector: string;
+  target: number;
+  status: SeqStatus;
+  collected: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeqTaskInput {
+  name: string;
+  scheme: string;
+  host: string;
+  template: string;
+  httpVersion: string;
+  source: SeqSource;
+  selector: string;
+  target: number;
+}
+
+export interface SequencerReport {
+  sampleCount: number;
+  uniqueCount: number;
+  minLength: number;
+  maxLength: number;
+  alphabetSize: number;
+  positionEntropy: number[];
+  effectiveBits: number;
+  bitsPerChar: number;
+  quality: SeqQuality;
+  notes: string[];
+}
+
+export interface SeqTaskDetail {
+  task: SeqTaskView;
+  report: SequencerReport | null;
+  tokens: string[];
+}
+
+export interface SeqUpdate {
+  kind: 'progress' | 'status';
+  taskId?: string;
+  status?: SeqStatus;
+  collected: number;
+  target: number;
 }

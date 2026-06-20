@@ -7,6 +7,8 @@ import { SiteMapPage } from './pages/SiteMapPage';
 import { RepeaterPage } from './pages/RepeaterPage';
 import { IntruderPage } from './pages/IntruderPage';
 import { ScannerPage } from './pages/ScannerPage';
+import { CrawlerPage } from './pages/CrawlerPage';
+import { SequencerPage } from './pages/SequencerPage';
 import { DecoderPage } from './pages/DecoderPage';
 import { ComparerPage } from './pages/ComparerPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -36,6 +38,8 @@ export default function App() {
           <Route path="/repeater" element={<RepeaterPage />} />
           <Route path="/intruder" element={<IntruderPage />} />
           <Route path="/scanner" element={<ScannerPage />} />
+          <Route path="/crawler" element={<CrawlerPage />} />
+          <Route path="/sequencer" element={<SequencerPage />} />
           <Route path="/decoder" element={<DecoderPage />} />
           <Route path="/comparer" element={<ComparerPage />} />
           <Route path="/settings" element={<SettingsPage />} />

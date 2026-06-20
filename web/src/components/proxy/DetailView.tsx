@@ -83,6 +83,32 @@ export function DetailView() {
     }
   };
 
+  const sendToCrawler = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api.sendToCrawler(selectedId);
+      navigate('/crawler');
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Failed to send to Crawler');
+      setSending(false);
+    }
+  };
+
+  const sendToSequencer = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api.sendToSequencer(selectedId);
+      navigate('/sequencer');
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Failed to send to Sequencer');
+      setSending(false);
+    }
+  };
+
   const requestData = useMemo(
     () => (detail ? decode(detail.requestRaw) : { ok: true, text: '', bytes: 0 }),
     [detail],
@@ -160,6 +186,24 @@ export function DetailView() {
           className="shrink-0"
         >
           Send to Scanner
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={() => void sendToCrawler()}
+          className="shrink-0"
+        >
+          Send to Crawler
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={() => void sendToSequencer()}
+          className="shrink-0"
+        >
+          Send to Sequencer
         </Button>
       </div>
 

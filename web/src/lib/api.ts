@@ -2,6 +2,9 @@ import { authHeaders } from './auth';
 import type {
   ComparerMode,
   ComparerResponse,
+  CrawlTaskDetail,
+  CrawlTaskInput,
+  CrawlTaskView,
   DecoderDetectResponse,
   DecoderOp,
   DecoderRunResponse,
@@ -23,6 +26,9 @@ import type {
   ScanTaskView,
   ScopeRule,
   SendResponse,
+  SeqTaskDetail,
+  SeqTaskInput,
+  SeqTaskView,
   SitemapHost,
   SitemapNoteInput,
   TabDetail,
@@ -372,7 +378,84 @@ export const api = {
     });
   },
 
-  // --- Send to Repeater / Intruder / Scanner (from the proxy) ---
+  // --- Crawler ---
+
+  listCrawlTasks(): Promise<CrawlTaskView[]> {
+    return request<CrawlTaskView[]>('/api/crawler/tasks');
+  },
+
+  createCrawlTask(body: CrawlTaskInput): Promise<CrawlTaskView> {
+    return request<CrawlTaskView>('/api/crawler/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getCrawlTask(id: string): Promise<CrawlTaskDetail> {
+    return request<CrawlTaskDetail>(`/api/crawler/tasks/${encodeURIComponent(id)}`);
+  },
+
+  deleteCrawlTask(id: string): Promise<void> {
+    return request<void>(`/api/crawler/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  startCrawlTask(id: string): Promise<CrawlTaskView> {
+    return request<CrawlTaskView>(`/api/crawler/tasks/${encodeURIComponent(id)}/start`, {
+      method: 'POST',
+    });
+  },
+
+  stopCrawlTask(id: string): Promise<{ stopped: boolean }> {
+    return request<{ stopped: boolean }>(`/api/crawler/tasks/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+    });
+  },
+
+  // --- Sequencer (template is base64) ---
+
+  listSequencerTasks(): Promise<SeqTaskView[]> {
+    return request<SeqTaskView[]>('/api/sequencer/tasks');
+  },
+
+  createSequencerTask(body: SeqTaskInput): Promise<SeqTaskView> {
+    return request<SeqTaskView>('/api/sequencer/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getSequencerTask(id: string): Promise<SeqTaskDetail> {
+    return request<SeqTaskDetail>(`/api/sequencer/tasks/${encodeURIComponent(id)}`);
+  },
+
+  updateSequencerTask(id: string, body: SeqTaskInput): Promise<SeqTaskView> {
+    return request<SeqTaskView>(`/api/sequencer/tasks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteSequencerTask(id: string): Promise<void> {
+    return request<void>(`/api/sequencer/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  startSequencerTask(id: string): Promise<SeqTaskView> {
+    return request<SeqTaskView>(`/api/sequencer/tasks/${encodeURIComponent(id)}/start`, {
+      method: 'POST',
+    });
+  },
+
+  stopSequencerTask(id: string): Promise<{ stopped: boolean }> {
+    return request<{ stopped: boolean }>(`/api/sequencer/tasks/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+    });
+  },
+
+  // --- Send to Repeater / Intruder / Scanner / Crawler / Sequencer (from the proxy) ---
 
   sendToRepeater(id: string): Promise<TabView> {
     return request<TabView>(`/api/requests/${encodeURIComponent(id)}/send-to-repeater`, {
@@ -388,6 +471,18 @@ export const api = {
 
   sendToScanner(id: string): Promise<ScanTaskView> {
     return request<ScanTaskView>(`/api/requests/${encodeURIComponent(id)}/send-to-scanner`, {
+      method: 'POST',
+    });
+  },
+
+  sendToCrawler(id: string): Promise<CrawlTaskView> {
+    return request<CrawlTaskView>(`/api/requests/${encodeURIComponent(id)}/send-to-crawler`, {
+      method: 'POST',
+    });
+  },
+
+  sendToSequencer(id: string): Promise<SeqTaskView> {
+    return request<SeqTaskView>(`/api/requests/${encodeURIComponent(id)}/send-to-sequencer`, {
       method: 'POST',
     });
   },

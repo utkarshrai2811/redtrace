@@ -3,6 +3,8 @@ import { useProxyStore } from '../store/proxyStore';
 import { useConnectionStore } from '../store/connectionStore';
 import { useIntruderStore } from '../store/intruderStore';
 import { useScannerStore } from '../store/scannerStore';
+import { useCrawlerStore } from '../store/crawlerStore';
+import { useSequencerStore } from '../store/sequencerStore';
 import { getToken } from '../lib/auth';
 import type { WsFrame } from '../lib/types';
 
@@ -19,7 +21,12 @@ function isWsFrame(value: unknown): value is WsFrame {
   if (typeof value !== 'object' || value === null) return false;
   const t = (value as { type?: unknown }).type;
   return (
-    (t === 'traffic' || t === 'intercept' || t === 'intruder' || t === 'scanner') &&
+    (t === 'traffic' ||
+      t === 'intercept' ||
+      t === 'intruder' ||
+      t === 'scanner' ||
+      t === 'crawl' ||
+      t === 'sequencer') &&
     'data' in value
   );
 }
@@ -33,6 +40,8 @@ export function useWebSocket(): void {
   const applyIntercept = useProxyStore((s) => s.applyInterceptFrame);
   const applyIntruder = useIntruderStore((s) => s.applyUpdate);
   const applyScanner = useScannerStore((s) => s.applyUpdate);
+  const applyCrawler = useCrawlerStore((s) => s.applyUpdate);
+  const applySequencer = useSequencerStore((s) => s.applyUpdate);
   const setStatus = useConnectionStore((s) => s.setStatus);
 
   // Refs avoid re-running the effect when store actions change identity.
@@ -40,10 +49,14 @@ export function useWebSocket(): void {
   const applyInterceptRef = useRef(applyIntercept);
   const applyIntruderRef = useRef(applyIntruder);
   const applyScannerRef = useRef(applyScanner);
+  const applyCrawlerRef = useRef(applyCrawler);
+  const applySequencerRef = useRef(applySequencer);
   applyTrafficRef.current = applyTraffic;
   applyInterceptRef.current = applyIntercept;
   applyIntruderRef.current = applyIntruder;
   applyScannerRef.current = applyScanner;
+  applyCrawlerRef.current = applyCrawler;
+  applySequencerRef.current = applySequencer;
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -71,8 +84,12 @@ export function useWebSocket(): void {
             applyInterceptRef.current(parsed.data);
           } else if (parsed.type === 'intruder') {
             applyIntruderRef.current(parsed.data);
-          } else {
+          } else if (parsed.type === 'scanner') {
             applyScannerRef.current(parsed.data);
+          } else if (parsed.type === 'crawl') {
+            applyCrawlerRef.current(parsed.data);
+          } else {
+            applySequencerRef.current(parsed.data);
           }
         } catch {
           // Ignore malformed frames.
