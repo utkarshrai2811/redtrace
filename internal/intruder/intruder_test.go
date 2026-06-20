@@ -148,3 +148,31 @@ func TestValidate(t *testing.T) {
 		t.Errorf("valid config rejected: %v", err)
 	}
 }
+
+func TestValidateUnknownType(t *testing.T) {
+	cfg := Config{Template: tmpl("a=§1§"), Type: "bogus", PayloadSets: []PayloadSet{{Payloads: []string{"x"}}}}
+	err := Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "unknown attack type") {
+		t.Errorf("Validate(unknown type) = %v, want an 'unknown attack type' error", err)
+	}
+}
+
+func TestClusterBombCountSaturates(t *testing.T) {
+	big := make([]string, 8000)
+	for i := range big {
+		big[i] = "x"
+	}
+	cfg := Config{
+		Template:    tmpl("a=§X§&b=§Y§"),
+		Type:        ClusterBomb,
+		PayloadSets: []PayloadSet{{Payloads: big}, {Payloads: big}},
+	}
+	// 8000 × 8000 = 64,000,000 exceeds maxJobs: Count must saturate (stay
+	// positive, never overflow to a negative/garbage total) and Validate reject.
+	if n := Count(cfg); n <= maxJobs {
+		t.Fatalf("Count = %d, want > maxJobs (%d)", n, maxJobs)
+	}
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "maximum") {
+		t.Errorf("Validate(over-large cluster bomb) = %v, want a 'maximum' error", err)
+	}
+}

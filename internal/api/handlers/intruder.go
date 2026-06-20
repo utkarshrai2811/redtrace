@@ -236,11 +236,15 @@ func (a *API) StartIntruderAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	total := intruder.Count(icfg)
-	if err := a.Store.PrepareIntruderRun(r.Context(), attack.ID, total); err != nil {
+	started, err := a.Intruder.Start(attack.ID, icfg, total)
+	if err != nil {
 		a.serverError(w, "start_failed", err)
 		return
 	}
-	a.Intruder.Start(attack.ID, icfg, total)
+	if !started {
+		writeError(w, http.StatusConflict, "already_running", "attack is already running")
+		return
+	}
 
 	// Progress and the final status flow to clients over the intruder WS frames.
 	attack.Status, attack.Total, attack.Completed = intruder.StatusRunning, total, 0
@@ -249,11 +253,20 @@ func (a *API) StartIntruderAttack(w http.ResponseWriter, r *http.Request) {
 
 // StopIntruderAttack handles POST /api/intruder/attacks/{id}/stop.
 func (a *API) StopIntruderAttack(w http.ResponseWriter, r *http.Request) {
-	if !a.Intruder.Stop(r.PathValue("id")) {
-		writeError(w, http.StatusConflict, "not_running", "attack is not running")
+	id := r.PathValue("id")
+	if a.Intruder.Stop(id) {
+		writeJSON(w, http.StatusOK, map[string]any{"stopped": true})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stopped": true})
+	// Not running in this process. If the DB still says running (e.g. an attack
+	// orphaned by a crash before the startup reconcile ran), force it to stopped
+	// so the UI can recover instead of a Stop that always conflicts.
+	if attack, err := a.Store.GetIntruderAttack(r.Context(), id); err == nil && attack.Status == intruder.StatusRunning {
+		_ = a.Store.SetIntruderStatus(r.Context(), id, intruder.StatusStopped)
+		writeJSON(w, http.StatusOK, map[string]any{"stopped": true})
+		return
+	}
+	writeError(w, http.StatusConflict, "not_running", "attack is not running")
 }
 
 // GetIntruderResult handles GET /api/intruder/results/{id}, returning one result
@@ -281,10 +294,20 @@ type IntruderStore struct {
 	DB *storage.DB
 }
 
+func (s IntruderStore) PrepareIntruderRun(ctx context.Context, attackID string, total int) error {
+	return s.DB.PrepareIntruderRun(ctx, attackID, total)
+}
+
 func (s IntruderStore) AddIntruderResult(ctx context.Context, attackID string, r intruder.Result) error {
 	payloads, _ := json.Marshal(r.Payloads)
+	// Reuse the id assigned when the result was produced (also sent over the WS)
+	// so a live row and its persisted row share an id; fall back if it is unset.
+	id := r.ID
+	if id == "" {
+		id = storage.NewID()
+	}
 	return s.DB.AddIntruderResult(ctx, &models.IntruderResult{
-		ID: storage.NewID(), AttackID: attackID, Index: r.Index, Payloads: payloads,
+		ID: id, AttackID: attackID, Index: r.Index, Payloads: payloads,
 		StatusCode: r.StatusCode, Length: r.Length, DurationMs: r.DurationMs,
 		RequestRaw: r.RequestRaw, ResponseRaw: r.ResponseRaw, Error: r.Error,
 	})

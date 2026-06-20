@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestEngineRun_Sniper(t *testing.T) {
@@ -87,5 +88,108 @@ func TestEngineRun_Cancel(t *testing.T) {
 	_, err := NewEngine().Run(ctx, cfg, func(Result) {})
 	if err == nil {
 		t.Fatal("expected a cancellation error")
+	}
+}
+
+// fakeStore is an in-memory intruder.Store for Runner tests.
+type fakeStore struct {
+	mu       sync.Mutex
+	prepared int
+	statuses []string
+}
+
+func (s *fakeStore) PrepareIntruderRun(context.Context, string, int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prepared++
+	return nil
+}
+func (s *fakeStore) AddIntruderResult(context.Context, string, Result) error   { return nil }
+func (s *fakeStore) UpdateIntruderProgress(context.Context, string, int) error { return nil }
+func (s *fakeStore) SetIntruderStatus(_ context.Context, _, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statuses = append(s.statuses, status)
+	return nil
+}
+func (s *fakeStore) lastStatus() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.statuses) == 0 {
+		return ""
+	}
+	return s.statuses[len(s.statuses)-1]
+}
+func (s *fakeStore) prepareCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prepared
+}
+
+// blockingRunner returns a Runner whose attacks block on an unreleased server,
+// so a run is reliably in-flight; the caller defers the returned cleanup.
+func blockingRunner(t *testing.T) (*Runner, *fakeStore, Config, func()) {
+	t.Helper()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	u, _ := url.Parse(srv.URL)
+	cfg := Config{
+		Scheme:      "http",
+		Host:        u.Host,
+		Template:    []byte("GET /?id=§1§ HTTP/1.1\r\nHost: " + u.Host + "\r\n\r\n"),
+		Type:        Sniper,
+		PayloadSets: []PayloadSet{{Payloads: []string{"a", "b", "c"}}},
+		Concurrency: 1,
+	}
+	store := &fakeStore{}
+	cleanup := func() {
+		close(release) // unblock the handler so srv.Close can return
+		srv.Close()
+	}
+	return NewRunner(store, nil), store, cfg, cleanup
+}
+
+func TestRunnerRejectsDoubleStart(t *testing.T) {
+	r, store, cfg, cleanup := blockingRunner(t)
+	defer cleanup()
+
+	started, err := r.Start("attack-1", cfg, 3)
+	if err != nil || !started {
+		t.Fatalf("first Start = (%v, %v), want (true, nil)", started, err)
+	}
+	// A second start while the first is in-flight must be rejected without
+	// re-preparing — re-preparing would wipe the live run's results.
+	started2, err := r.Start("attack-1", cfg, 3)
+	if err != nil {
+		t.Fatalf("second Start error: %v", err)
+	}
+	if started2 {
+		t.Error("second Start returned true; want false (already running)")
+	}
+
+	r.Shutdown(context.Background())
+	if n := store.prepareCount(); n != 1 {
+		t.Errorf("PrepareIntruderRun called %d times, want 1", n)
+	}
+}
+
+func TestRunnerShutdownStopsRunningAttack(t *testing.T) {
+	r, store, cfg, cleanup := blockingRunner(t)
+	defer cleanup()
+
+	started, err := r.Start("attack-1", cfg, 3)
+	if err != nil || !started {
+		t.Fatalf("Start = (%v, %v), want (true, nil)", started, err)
+	}
+	// Shutdown must cancel the in-flight run and record a terminal 'stopped'
+	// status (not leave it stuck at 'running'), within the deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	r.Shutdown(ctx)
+	if got := store.lastStatus(); got != StatusStopped {
+		t.Errorf("status after shutdown = %q, want %q", got, StatusStopped)
 	}
 }

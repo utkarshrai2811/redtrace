@@ -7,6 +7,7 @@ package intruder
 import (
 	"bytes"
 	"crypto/md5" //nolint:gosec // G501: md5 is offered only as a payload-processing option, not for security
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -19,6 +20,12 @@ import (
 
 // Marker delimits a payload position in a request template (Burp's "§").
 const Marker = "§"
+
+// maxJobs caps how many requests a single attack may generate. It guards the
+// user's own machine against an accidental runaway attack (e.g. a Cluster bomb
+// of several large payload sets filling the disk) and keeps Count from silently
+// overflowing — product saturates here rather than wrapping to a bogus total.
+const maxJobs = 50_000_000
 
 // AttackType selects how payloads are distributed across positions.
 type AttackType string
@@ -64,6 +71,10 @@ type Config struct {
 
 // Result is the outcome of one generated request.
 type Result struct {
+	// ID is assigned when the result is produced and is reused as the persisted
+	// row's primary key, so a result streamed over the WebSocket carries the same
+	// id the detail endpoint serves — the UI can open it while the attack runs.
+	ID          string   `json:"id"`
 	Index       int      `json:"index"`
 	Payloads    []string `json:"payloads"`
 	StatusCode  int      `json:"statusCode"`
@@ -314,7 +325,9 @@ func lockstepLen(sets [][]string, positions int) int {
 }
 
 // product is the number of combinations across the positions that have a set
-// (used by Cluster bomb). Zero if any contributing set is empty.
+// (used by Cluster bomb). Zero if any contributing set is empty. It saturates at
+// maxJobs+1 instead of overflowing, so a combination space beyond what Validate
+// allows is reported as "too large" rather than wrapping to a bogus total.
 func product(sets [][]string, positions int) int {
 	s := min(positions, len(sets))
 	if s == 0 {
@@ -325,13 +338,32 @@ func product(sets [][]string, positions int) int {
 		if len(sets[i]) == 0 {
 			return 0
 		}
+		if total > maxJobs/len(sets[i]) {
+			return maxJobs + 1
+		}
 		total *= len(sets[i])
 	}
 	return total
 }
 
+// newID returns a random RFC 4122 v4 identifier for a generated result.
+func newID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 // Validate reports a problem with cfg before an attack is started.
 func Validate(cfg Config) error {
+	switch cfg.Type {
+	case Sniper, BatteringRam, Pitchfork, ClusterBomb:
+	default:
+		return fmt.Errorf("unknown attack type %q", cfg.Type)
+	}
 	if Positions(cfg.Template) == 0 {
 		return fmt.Errorf("no payload positions: mark at least one with %s…%s", Marker, Marker)
 	}
@@ -348,8 +380,12 @@ func Validate(cfg Config) error {
 	if !nonEmpty {
 		return fmt.Errorf("payload sets are empty")
 	}
-	if Count(cfg) == 0 {
+	n := Count(cfg)
+	if n <= 0 {
 		return fmt.Errorf("attack generates no requests for type %q", cfg.Type)
+	}
+	if n > maxJobs {
+		return fmt.Errorf("attack would generate %d requests; the maximum is %d — narrow the payloads or positions", n, maxJobs)
 	}
 	return nil
 }

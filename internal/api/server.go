@@ -107,6 +107,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		// Cancel in-flight Intruder attacks first so they stop firing requests and
+		// record a terminal status while the DB is still open, then drain HTTP.
+		s.api.Intruder.Shutdown(shutdownCtx)
 		_ = s.server.Shutdown(shutdownCtx)
 	}()
 
