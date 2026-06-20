@@ -33,6 +33,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration 0005).
 
 ### Fixed
+- Post-Phase-4 (Scanner) review pass:
+  - **Passive checks:** cookie Secure/HttpOnly/SameSite detection now parses the
+    attribute list instead of substring-matching the whole Set-Cookie line (a
+    `__Secure-`-prefixed cookie missing the Secure attribute, or a value
+    containing those words, was wrongly passed); the password-over-HTTP check
+    matches single-quoted and spaced `type=password` markup; HSTS and
+    X-Content-Type-Options findings are scoped per path; evidence truncation no
+    longer slices multibyte UTF-8 mid-rune.
+  - **Active scanner:** the request builder no longer double-encodes an
+    already-percent-encoded payload (the `%2f` path-traversal variant reached the
+    wire as `%252f`); insertion-point selection is deterministic (sorted) so a
+    scan probes the same parameters every run and within the cap; a failed
+    baseline request now skips the diff-based detectors instead of suppressing
+    nothing (which caused false positives); legacy semicolon-separated query
+    strings still yield insertion points.
+  - **Scan lifecycle/UI:** the terminal status frame carries the final
+    completed/issue counts so a finished scan no longer flashes `0/total`; active
+    findings now stream into the open scan's Findings table live; live findings
+    sort to the top of their severity tier; clearing findings also resets the
+    per-task counts; deleting a scan asks for confirmation; issue rows are
+    keyboard-activatable.
+  - **Active findings dedup** is scoped per task, so two scans of the same
+    endpoint each record and count their own findings; the per-task issues query
+    uses its index instead of scanning the whole table.
 - Post-Phase-3 (Intruder) review pass:
   - **Lifecycle:** starting an attack that is already running is rejected
     (409) instead of launching a second engine that wiped the first run's
