@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS scan_issues;
+DROP TABLE IF EXISTS scan_tasks;
