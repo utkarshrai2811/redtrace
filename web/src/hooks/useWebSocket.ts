@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { useProxyStore } from '../store/proxyStore';
 import { useConnectionStore } from '../store/connectionStore';
+import { getToken } from '../lib/auth';
 import type { WsFrame } from '../lib/types';
 
 function trafficUrl(): string {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.host}/ws/traffic`;
+  // Browsers cannot set headers on a WebSocket handshake, so the auth token (if
+  // any) is passed as a query parameter, which the server accepts for /ws/.
+  const token = getToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${scheme}://${location.host}/ws/traffic${query}`;
 }
 
 function isWsFrame(value: unknown): value is WsFrame {

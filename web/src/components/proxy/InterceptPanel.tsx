@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useProxyStore } from '../../store/proxyStore';
-import { decodeBase64, encodeBase64 } from '../../lib/encoding';
+import { decode, encodeBase64 } from '../../lib/encoding';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import type { HeldItem } from '../../lib/types';
@@ -9,16 +9,25 @@ function HeldEditor({ item }: { item: HeldItem }) {
   const forwardItem = useProxyStore((s) => s.forwardItem);
   const dropItem = useProxyStore((s) => s.dropItem);
 
-  const original = decodeBase64(item.raw);
-  const [text, setText] = useState(original);
+  const decoded = useMemo(() => decode(item.raw), [item.raw]);
+  // Editing is only safe when the bytes round-trip losslessly through UTF-8.
+  // Binary content (uploads, images, compressed bodies) would be corrupted —
+  // non-UTF-8 bytes become U+FFFD — so it is shown read-only and forwarded
+  // unmodified rather than re-encoded from the mangled text.
+  const editable = useMemo(
+    () => decoded.ok && encodeBase64(decoded.text) === item.raw,
+    [decoded, item.raw],
+  );
+
+  const [text, setText] = useState(decoded.text);
   const [busy, setBusy] = useState(false);
 
   // Reset the editor whenever a different item reaches the head of the queue.
   useEffect(() => {
-    setText(decodeBase64(item.raw));
+    setText(decode(item.raw).text);
   }, [item.id, item.raw]);
 
-  const edited = text !== original;
+  const edited = editable && text !== decoded.text;
 
   const handleForward = async () => {
     setBusy(true);
@@ -54,12 +63,22 @@ function HeldEditor({ item }: { item: HeldItem }) {
         {edited && <Badge tone="accent">edited</Badge>}
       </div>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        spellCheck={false}
-        className="raw-http min-h-0 flex-1 resize-none bg-canvas px-3 py-2 text-zinc-200 outline-none"
-      />
+      {editable ? (
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          spellCheck={false}
+          aria-label="Edit intercepted message before forwarding"
+          className="raw-http min-h-0 flex-1 resize-none bg-canvas px-3 py-2 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-accent/40"
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-auto bg-canvas px-3 py-2">
+          <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-2xs text-amber-300">
+            Binary content — forwarded unmodified (editing would corrupt the bytes).
+          </div>
+          <pre className="raw-http text-zinc-400">{decoded.ok ? decoded.text : '— binary —'}</pre>
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-800 bg-panel px-3 py-2">
         <Button variant="danger" size="sm" disabled={busy} onClick={() => void handleDrop()}>

@@ -162,16 +162,24 @@ export const useRepeaterStore = create<RepeaterState>((set, get) => ({
   saveAndSend: async () => {
     const { selectedId, draft } = get();
     if (!selectedId || !draft) return;
+    // Capture the selection token: if the user switches tabs (even away and
+    // back to this same tab, which re-fetches its history) before the send
+    // resolves, this stale result must not be appended onto the refreshed list.
+    const token = detailToken;
     set({ sending: true, sendError: null });
     try {
       // The backend is the source of truth: persist the editor contents first,
       // then send. A network failure surfaces inline (502) without crashing.
       const updated = await api.updateRepeaterTab(selectedId, inputFromDraft(draft));
+      if (token !== detailToken) {
+        set({ sending: false });
+        return;
+      }
       set((s) => ({ tabs: s.tabs.map((t) => (t.id === updated.id ? updated : t)) }));
 
       const result = await api.sendRepeaterTab(selectedId);
       set((s) => {
-        if (s.selectedId !== selectedId) return { sending: false };
+        if (token !== detailToken) return { sending: false };
         const history = [...s.history, result.history];
         return {
           sending: false,
@@ -180,6 +188,10 @@ export const useRepeaterStore = create<RepeaterState>((set, get) => ({
         };
       });
     } catch (err) {
+      if (token !== detailToken) {
+        set({ sending: false });
+        return;
+      }
       const message = err instanceof ApiError ? err.message : 'Send failed';
       set({ sending: false, sendError: message });
     }

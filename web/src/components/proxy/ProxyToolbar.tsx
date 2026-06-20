@@ -26,6 +26,16 @@ export function ProxyToolbar() {
   // dropdown change never discards typed text) but debounce only the fetch.
   const debouncedFetch = useDebouncedCallback(() => void fetchList(), 300);
 
+  // `total` is the count matching the active filter (the backend filters the
+  // COUNT too), so it is only the grand total when no filter is applied.
+  const filtered =
+    filters.method !== 'ANY' ||
+    filters.host !== 'ANY' ||
+    filters.status !== 'ANY' ||
+    filters.mime !== '' ||
+    filters.q !== '' ||
+    filters.scope;
+
   return (
     <div className="shrink-0 border-b border-zinc-800 bg-panel/40">
       {/* Intercept controls */}
@@ -63,7 +73,9 @@ export function ProxyToolbar() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-2xs text-zinc-500">{total.toLocaleString('en-US')} captured</span>
+          <span className="text-2xs text-zinc-500">
+            {total.toLocaleString('en-US')} {filtered ? 'matching' : 'captured'}
+          </span>
           <Button size="sm" variant="ghost" onClick={() => void fetchList()} title="Refresh list">
             <svg
               width="13"

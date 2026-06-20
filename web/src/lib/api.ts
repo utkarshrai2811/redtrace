@@ -1,3 +1,4 @@
+import { authHeaders } from './auth';
 import type {
   ComparerMode,
   ComparerResponse,
@@ -50,6 +51,7 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...authHeaders(),
       ...init?.headers,
     },
   });
