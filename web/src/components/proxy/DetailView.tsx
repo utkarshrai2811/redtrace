@@ -68,7 +68,7 @@ export function DetailView() {
 
   if (!selectedId) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+      <div className="flex h-full items-center justify-center text-xs text-zinc-400">
         Select a request to inspect it
       </div>
     );

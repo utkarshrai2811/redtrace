@@ -40,7 +40,7 @@ export function RepeaterEditor() {
 
   if (!selectedId) {
     return (
-      <div className="flex h-full flex-1 items-center justify-center text-xs text-zinc-600">
+      <div className="flex h-full flex-1 items-center justify-center text-xs text-zinc-400">
         Select or create a tab to start.
       </div>
     );

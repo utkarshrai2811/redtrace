@@ -117,11 +117,17 @@ export function DashboardPage() {
             </CardHeader>
             <CardBody className="p-0">
               {recent.length === 0 ? (
-                <div className="px-4 py-8 text-center text-xs text-zinc-600">
+                <div className="px-4 py-8 text-center text-xs text-zinc-400">
                   {loaded ? 'No traffic captured yet.' : 'Loading…'}
                 </div>
               ) : (
-                <table className="w-full border-collapse font-mono text-xs">
+                <table className="w-full table-fixed border-collapse font-mono text-xs">
+                  <colgroup>
+                    <col className="w-16" />
+                    <col />
+                    <col className="w-14" />
+                    <col className="w-20" />
+                  </colgroup>
                   <tbody>
                     {recent.map((row) => (
                       <tr key={row.id} className="border-b border-zinc-800/50 last:border-0">

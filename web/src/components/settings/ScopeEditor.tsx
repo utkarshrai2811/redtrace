@@ -93,7 +93,7 @@ export function ScopeEditor() {
             <Spinner /> Loading…
           </div>
         ) : rules.length === 0 ? (
-          <p className="py-3 text-xs text-zinc-600">No scope rules. Everything is in scope.</p>
+          <p className="py-3 text-xs text-zinc-400">No scope rules. Everything is in scope.</p>
         ) : (
           rules.map((rule) => (
             <div
@@ -133,6 +133,7 @@ export function ScopeEditor() {
                 size="icon"
                 variant="ghost"
                 title="Remove rule"
+                aria-label="Remove scope rule"
                 onClick={() => remove(rule.id)}
                 className="text-zinc-500 hover:text-red-400"
               >

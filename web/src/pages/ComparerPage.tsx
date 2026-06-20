@@ -118,7 +118,7 @@ export function ComparerPage() {
               {error}
             </div>
           ) : !segments ? (
-            <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+            <div className="flex h-full items-center justify-center text-xs text-zinc-400">
               Enter text in A and B to compare.
             </div>
           ) : (

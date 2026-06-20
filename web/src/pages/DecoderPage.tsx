@@ -41,6 +41,8 @@ export function DecoderPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingOp, setPendingOp] = useState<DecoderOp>('base64_decode');
   const [copied, setCopied] = useState(false);
+  // Transient feedback for Smart detect / Copy, which would otherwise fail silently.
+  const [note, setNote] = useState<string | null>(null);
 
   // Track the latest run so out-of-order responses don't clobber a newer one.
   const runToken = useRef(0);
@@ -90,14 +92,22 @@ export function DecoderPage() {
     });
   };
 
+  const flashNote = (msg: string) => {
+    setNote(msg);
+    window.setTimeout(() => setNote(null), 1800);
+  };
+
   const detect = async () => {
     try {
       const res = await api.decoderDetect(input);
       if (res.ok) {
         setChain((c) => [...c, { key: crypto.randomUUID(), op: res.op as DecoderOp }]);
+        setNote(null);
+      } else {
+        flashNote('No encoding detected');
       }
     } catch {
-      // Detection is best-effort; ignore failures.
+      flashNote('Detection failed');
     }
   };
 
@@ -107,7 +117,7 @@ export function DecoderPage() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
-      // Clipboard may be unavailable; ignore.
+      flashNote('Copy failed — clipboard unavailable');
     }
   };
 
@@ -122,9 +132,12 @@ export function DecoderPage() {
             <span className="text-2xs font-semibold uppercase tracking-wider text-zinc-500">
               Input
             </span>
-            <Button size="sm" variant="outline" onClick={() => void detect()} disabled={input === ''}>
-              Smart detect
-            </Button>
+            <div className="flex items-center gap-2">
+              {note && <span className="text-2xs text-amber-400">{note}</span>}
+              <Button size="sm" variant="outline" onClick={() => void detect()} disabled={input === ''}>
+                Smart detect
+              </Button>
+            </div>
           </div>
           <textarea
             value={input}
@@ -155,7 +168,7 @@ export function DecoderPage() {
             </div>
 
             {chain.length === 0 ? (
-              <p className="text-2xs text-zinc-600">
+              <p className="text-2xs text-zinc-400">
                 No operations. Output mirrors the input. Add ops to build a transform chain.
               </p>
             ) : (
@@ -170,6 +183,7 @@ export function DecoderPage() {
                     <button
                       type="button"
                       title="Move up"
+                      aria-label="Move operation up"
                       disabled={i === 0}
                       onClick={() => move(i, -1)}
                       className="rounded px-1 text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
@@ -179,6 +193,7 @@ export function DecoderPage() {
                     <button
                       type="button"
                       title="Move down"
+                      aria-label="Move operation down"
                       disabled={i === chain.length - 1}
                       onClick={() => move(i, 1)}
                       className="rounded px-1 text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
@@ -188,6 +203,7 @@ export function DecoderPage() {
                     <button
                       type="button"
                       title="Remove operation"
+                      aria-label="Remove operation"
                       onClick={() => removeOp(item.key)}
                       className="rounded px-1 text-zinc-500 hover:text-red-400"
                     >

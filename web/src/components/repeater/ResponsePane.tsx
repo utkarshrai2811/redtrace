@@ -37,7 +37,7 @@ export function ResponsePane({ responseRaw, statusCode, durationMs, sending }: R
             <Spinner /> Sending…
           </div>
         ) : !responseRaw ? (
-          <div className="flex h-full items-center justify-center text-xs text-zinc-600">
+          <div className="flex h-full items-center justify-center text-xs text-zinc-400">
             — no response yet —
           </div>
         ) : !data.ok ? (

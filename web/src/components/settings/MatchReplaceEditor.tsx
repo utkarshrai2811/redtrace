@@ -98,7 +98,7 @@ export function MatchReplaceEditor() {
             <Spinner /> Loading…
           </div>
         ) : rules.length === 0 ? (
-          <p className="py-3 text-xs text-zinc-600">No match &amp; replace rules defined.</p>
+          <p className="py-3 text-xs text-zinc-400">No match &amp; replace rules defined.</p>
         ) : (
           rules.map((rule) => (
             <div
@@ -150,6 +150,7 @@ export function MatchReplaceEditor() {
                   size="icon"
                   variant="ghost"
                   title="Remove rule"
+                  aria-label="Remove match & replace rule"
                   onClick={() => remove(rule.id)}
                   className="ml-auto text-zinc-500 hover:text-red-400"
                 >

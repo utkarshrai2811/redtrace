@@ -147,7 +147,7 @@ export function SiteMapPage() {
         ) : error ? (
           <div className="px-4 py-6 text-xs text-red-400">{error}</div>
         ) : hosts.length === 0 ? (
-          <div className="px-4 py-8 text-center text-xs text-zinc-600">No hosts discovered yet.</div>
+          <div className="px-4 py-8 text-center text-xs text-zinc-400">No hosts discovered yet.</div>
         ) : (
           <div className="font-mono text-xs">
             {hosts.map((host) => {
@@ -218,6 +218,7 @@ export function SiteMapPage() {
             <button
               type="button"
               title="Close"
+              aria-label="Close note editor"
               onClick={() => setEditor(null)}
               className="rounded px-1 text-zinc-500 hover:text-zinc-200"
             >

@@ -22,6 +22,16 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* Baseline keyboard-focus indicator. The shared UI primitives opt out with
+     `focus-visible:outline-none` (a utilities-layer rule that wins over this)
+     and draw their own ring; this guarantees every other focusable control —
+     the hand-rolled buttons and links — still shows a visible focus ring. */
+  :focus-visible {
+    outline: 2px solid #ef4444;
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
   /* Dense, dark scrollbars to match the tool aesthetic. */
   * {
     scrollbar-width: thin;
