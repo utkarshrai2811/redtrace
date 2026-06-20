@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Decoder (URL/Base64/Hex/HTML/Gzip/JWT, chained ops, smart detect), Comparer
   (line/word LCS diff), the Target site map (tree + notes + JSON export), and a
   Send-to-Repeater action from proxy history.
+- Phase 3: Intruder — automated request fuzzing with Sniper, Battering ram,
+  Pitchfork, and Cluster bomb attack types; §-marked payload positions; payload
+  sets with processors (prefix/suffix, base64, URL, case, hashes); a concurrent
+  (unthrottled) runner with live results streamed over the WebSocket; a results
+  table with anomaly highlighting; and a Send-to-Intruder action from proxy
+  history. Attacks and results persist (migration 0004).
 
 ### Fixed
 - Interception now only holds in-scope traffic; bodyless (HEAD/204/304)
