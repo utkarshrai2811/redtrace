@@ -1,7 +1,10 @@
 package repeater
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -72,5 +75,65 @@ func TestEngine_FollowRedirects(t *testing.T) {
 	}
 	if follow.StatusCode != 200 || !strings.Contains(string(follow.Raw), "landed") {
 		t.Errorf("follow result: status=%d raw=%q", follow.StatusCode, follow.Raw)
+	}
+}
+
+func TestEngine_PreservesContentEncoding(t *testing.T) {
+	// A raw request without Accept-Encoding must not cause the transport to inject
+	// gzip and silently decompress: the response is shown exactly as sent.
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte("compressed-payload"))
+	_ = zw.Close()
+	gz := buf.Bytes()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write(gz)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+
+	resp, err := New().Send(context.Background(), Request{
+		Scheme: "http", Host: u.Host, Raw: rawGet(u.Host, "/"), HTTPVersion: "HTTP/1.1",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	raw := string(resp.Raw)
+	if !strings.Contains(strings.ToLower(raw), "content-encoding: gzip") {
+		t.Errorf("Content-Encoding stripped from raw response: %q", raw)
+	}
+	if !bytes.Contains(resp.Raw, gz) {
+		t.Error("raw response body was decompressed instead of forwarded verbatim")
+	}
+}
+
+func TestEngine_FollowsRedirectWithBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			http.Redirect(w, r, "/dest", http.StatusTemporaryRedirect) // 307
+		case "/dest":
+			b, _ := io.ReadAll(r.Body)
+			_, _ = w.Write([]byte("dest:" + r.Method + ":" + string(b)))
+		}
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+
+	raw := []byte("POST /start HTTP/1.1\r\nHost: " + u.Host + "\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello")
+	resp, err := New().Send(context.Background(), Request{
+		Scheme: "http", Host: u.Host, Raw: raw, FollowRedirects: true, HTTPVersion: "HTTP/1.1",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200 (307 with body should be followed)", resp.StatusCode)
+	}
+	if !strings.Contains(string(resp.Raw), "dest:POST:hello") {
+		t.Errorf("redirect did not replay method+body: %q", resp.Raw)
 	}
 }

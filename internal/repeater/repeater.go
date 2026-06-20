@@ -43,7 +43,12 @@ func New() *Engine {
 		t := &http.Transport{
 			// The operator chose the target explicitly; upstream certs are not
 			// verified (the same posture as the intercepting proxy).
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: deliberate for a security tool
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: deliberate for a security tool
+			// Never auto-inject Accept-Encoding or transparently decompress: the
+			// Repeater must show the response exactly as it came off the wire,
+			// including Content-Encoding. The server gzips only if the operator's
+			// raw request actually asked for it.
+			DisableCompression:    true,
 			ForceAttemptHTTP2:     forceH2,
 			MaxIdleConns:          50,
 			IdleConnTimeout:       90 * time.Second,
@@ -76,6 +81,12 @@ func (e *Engine) Send(ctx context.Context, req Request) (*Response, error) {
 	parsed.URL.Host = req.Host // dial target; the Host header keeps parsed.Host
 	parsed.Body = io.NopCloser(bytes.NewReader(body))
 	parsed.ContentLength = int64(len(body))
+	// GetBody lets the client re-create the body on a 307/308 redirect, which
+	// resends the original method and body; without it those redirects are not
+	// followed even when FollowRedirects is set. The captured slice is immutable.
+	parsed.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
 	parsed = parsed.WithContext(ctx)
 
 	transport := e.h1
