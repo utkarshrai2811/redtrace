@@ -16,8 +16,17 @@ const IssueRow = memo(function IssueRow({ issue, selected, onSelect }: IssueRowP
   return (
     <tr
       onClick={() => onSelect(issue.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(issue.id);
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`${issue.severity} ${issue.name} on ${issue.host}${issue.path}`}
       className={cn(
-        'cursor-pointer border-b border-zinc-800/50',
+        'cursor-pointer border-b border-zinc-800/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60',
         selected ? 'bg-accent/10' : 'hover:bg-zinc-800/40',
       )}
     >

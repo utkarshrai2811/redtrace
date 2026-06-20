@@ -27,8 +27,11 @@ function sortIssues(issues: ScanIssueView[]): ScanIssueView[] {
     .sort((a, b) => {
       const rank = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
       if (rank !== 0) return rank;
-      // Newest first; missing/empty createdAt sorts ahead (it is a live row).
-      return (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+      // Newest first; a missing/empty createdAt (a live WS row) sorts ahead by
+      // treating it as the largest timestamp.
+      const ca = a.createdAt || '￿';
+      const cb = b.createdAt || '￿';
+      return cb.localeCompare(ca);
     });
 }
 
@@ -202,7 +205,14 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     } catch {
       // Clear the view regardless to stay responsive.
     }
-    set({ issues: [] });
+    // The backend deletes every finding and zeroes each task's counter, so drop
+    // the per-task findings and counts here too rather than leaving them stale.
+    set((s) => ({
+      issues: [],
+      taskIssues: [],
+      tasks: s.tasks.map((t) => ({ ...t, issues: 0 })),
+      selectedTask: s.selectedTask ? { ...s.selectedTask, issues: 0 } : null,
+    }));
   },
 
   toggleSeverity: (sev) => {
@@ -220,12 +230,19 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set((s) => {
       if (u.kind === 'issue' && u.issue) {
         const summary = u.issue;
-        // Dedup by id: a reload + live updates must never duplicate a finding.
-        if (s.issues.some((i) => i.id === summary.id)) return {};
         const row = rowFromSummary(summary);
-        // Prepend then re-sort so the new finding lands in its severity tier as
-        // the newest entry.
-        return { issues: sortIssues([row, ...s.issues]) };
+        // Dedup by id (a reload + live updates must never duplicate). Prepend
+        // then re-sort so the new finding lands in its severity tier as newest.
+        const issues = s.issues.some((i) => i.id === summary.id)
+          ? s.issues
+          : sortIssues([row, ...s.issues]);
+        // Also fold an active finding into the open task's findings table so it
+        // appears live (active issue frames carry the owning task id).
+        const taskIssues =
+          u.taskId && u.taskId === s.selectedTaskId && !s.taskIssues.some((i) => i.id === summary.id)
+            ? sortIssues([row, ...s.taskIssues])
+            : s.taskIssues;
+        return { issues, taskIssues };
       }
 
       // progress / status: update the matching task's counters in the list, and

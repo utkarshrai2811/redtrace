@@ -65,7 +65,12 @@ export function ScanList() {
                     type="button"
                     title="Delete scan"
                     aria-label="Delete scan"
-                    onClick={() => void deleteTask(task.id)}
+                    onClick={() => {
+                      const msg = running
+                        ? 'This scan is running and will be stopped. Delete it?'
+                        : 'Delete this scan?';
+                      if (window.confirm(msg)) void deleteTask(task.id);
+                    }}
                     className="shrink-0 rounded px-1 text-zinc-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                   >
                     ✕
