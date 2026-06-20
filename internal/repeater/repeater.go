@@ -48,9 +48,14 @@ func New() *Engine {
 			// Repeater must show the response exactly as it came off the wire,
 			// including Content-Encoding. The server gzips only if the operator's
 			// raw request actually asked for it.
-			DisableCompression:    true,
-			ForceAttemptHTTP2:     forceH2,
-			MaxIdleConns:          50,
+			DisableCompression: true,
+			ForceAttemptHTTP2:  forceH2,
+			MaxIdleConns:       100,
+			// Intruder drives this transport with up to 64 concurrent workers all
+			// hitting one host; the default MaxIdleConnsPerHost of 2 would force a
+			// fresh TLS handshake for almost every request. Keep enough idle
+			// keep-alive connections per host for the worker pool to reuse.
+			MaxIdleConnsPerHost:   64,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   15 * time.Second,
 			ResponseHeaderTimeout: 60 * time.Second,
