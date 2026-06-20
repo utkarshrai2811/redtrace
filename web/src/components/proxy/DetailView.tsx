@@ -57,6 +57,19 @@ export function DetailView() {
     }
   };
 
+  const sendToIntruder = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await api.sendToIntruder(selectedId);
+      navigate('/intruder');
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Failed to send to Intruder');
+      setSending(false);
+    }
+  };
+
   const requestData = useMemo(
     () => (detail ? decode(detail.requestRaw) : { ok: true, text: '', bytes: 0 }),
     [detail],
@@ -116,6 +129,15 @@ export function DetailView() {
           className="shrink-0"
         >
           {sending ? 'Sending…' : 'Send to Repeater'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={() => void sendToIntruder()}
+          className="shrink-0"
+        >
+          Send to Intruder
         </Button>
       </div>
 

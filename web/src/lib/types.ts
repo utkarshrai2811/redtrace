@@ -134,7 +134,12 @@ export interface InterceptFrame {
   data: InterceptState;
 }
 
-export type WsFrame = TrafficFrame | InterceptFrame;
+export interface IntruderFrame {
+  type: 'intruder';
+  data: IntruderUpdate;
+}
+
+export type WsFrame = TrafficFrame | InterceptFrame | IntruderFrame;
 
 // Error envelope returned by the backend on failure.
 export interface ApiErrorEnvelope {
@@ -260,4 +265,91 @@ export interface SitemapNoteInput {
   path: string;
   note: string;
   tags: string[];
+}
+
+// --- Intruder (template/raw fields are base64) ---
+
+export type AttackType = 'sniper' | 'battering_ram' | 'pitchfork' | 'cluster_bomb';
+
+export type ProcessorKind =
+  | 'prefix'
+  | 'suffix'
+  | 'base64'
+  | 'base64url'
+  | 'url'
+  | 'upper'
+  | 'lower'
+  | 'sha256'
+  | 'md5';
+
+export interface Processor {
+  kind: ProcessorKind;
+  value?: string;
+}
+
+export interface PayloadSet {
+  payloads: string[];
+  processors?: Processor[];
+}
+
+export interface AttackView {
+  id: string;
+  name: string;
+  scheme: string;
+  host: string;
+  /** base64 of the raw request, with § markers */
+  template: string;
+  type: AttackType;
+  payloadSets: PayloadSet[];
+  followRedirects: boolean;
+  httpVersion: string;
+  concurrency: number;
+  status: 'pending' | 'running' | 'completed' | 'stopped' | 'error';
+  total: number;
+  completed: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntruderInput {
+  name: string;
+  scheme: string;
+  host: string;
+  template: string;
+  type: AttackType;
+  payloadSets: PayloadSet[];
+  followRedirects: boolean;
+  httpVersion: string;
+  concurrency: number;
+}
+
+export interface IntruderResultView {
+  id: string;
+  index: number;
+  payloads: string[];
+  statusCode: number;
+  length: number;
+  durationMs: number;
+  error?: string;
+}
+
+export interface IntruderAttackDetail {
+  attack: AttackView;
+  results: IntruderResultView[];
+}
+
+export interface IntruderResultDetail {
+  result: IntruderResultView;
+  requestRaw: string;
+  responseRaw: string;
+}
+
+/** Progress frame pushed over the WebSocket. */
+export interface IntruderUpdate {
+  attackId: string;
+  status: AttackView['status'];
+  completed: number;
+  total: number;
+  /** present on per-request updates, absent on status transitions */
+  result?: IntruderResultView;
 }

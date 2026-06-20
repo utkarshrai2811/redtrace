@@ -48,6 +48,11 @@ const ENABLED: NavItem[] = [
     icon: <Icon d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" />,
   },
   {
+    label: 'Intruder',
+    to: '/intruder',
+    icon: <Icon d="M12 3v3M12 18v3M3 12h3M18 12h3M12 8a4 4 0 100 8 4 4 0 000-8z" />,
+  },
+  {
     label: 'Decoder',
     to: '/decoder',
     icon: <Icon d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
@@ -66,7 +71,7 @@ const ENABLED: NavItem[] = [
   },
 ];
 
-const DISABLED = ['Intruder', 'Scanner', 'Sequencer', 'Crawler', 'OOB', 'AI'];
+const DISABLED = ['Scanner', 'Sequencer', 'Crawler', 'OOB', 'AI'];
 
 function ConnectionDot() {
   const status = useConnectionStore((s) => s.status);

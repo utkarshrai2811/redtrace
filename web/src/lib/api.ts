@@ -7,6 +7,10 @@ import type {
   DecoderRunResponse,
   HealthResponse,
   InterceptState,
+  IntruderAttackDetail,
+  IntruderInput,
+  IntruderResultDetail,
+  AttackView,
   MatchReplaceRule,
   ProxySettings,
   RequestDetail,
@@ -263,10 +267,62 @@ export const api = {
     });
   },
 
-  // --- Send to Repeater (from the proxy) ---
+  // --- Intruder (template/raw fields are base64) ---
+
+  listIntruderAttacks(): Promise<AttackView[]> {
+    return request<AttackView[]>('/api/intruder/attacks');
+  },
+
+  createIntruderAttack(body: IntruderInput): Promise<AttackView> {
+    return request<AttackView>('/api/intruder/attacks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  getIntruderAttack(id: string): Promise<IntruderAttackDetail> {
+    return request<IntruderAttackDetail>(`/api/intruder/attacks/${encodeURIComponent(id)}`);
+  },
+
+  updateIntruderAttack(id: string, body: IntruderInput): Promise<AttackView> {
+    return request<AttackView>(`/api/intruder/attacks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteIntruderAttack(id: string): Promise<void> {
+    return request<void>(`/api/intruder/attacks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  startIntruderAttack(id: string): Promise<AttackView> {
+    return request<AttackView>(`/api/intruder/attacks/${encodeURIComponent(id)}/start`, {
+      method: 'POST',
+    });
+  },
+
+  stopIntruderAttack(id: string): Promise<{ stopped: boolean }> {
+    return request<{ stopped: boolean }>(`/api/intruder/attacks/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+    });
+  },
+
+  getIntruderResult(id: string): Promise<IntruderResultDetail> {
+    return request<IntruderResultDetail>(`/api/intruder/results/${encodeURIComponent(id)}`);
+  },
+
+  // --- Send to Repeater / Intruder (from the proxy) ---
 
   sendToRepeater(id: string): Promise<TabView> {
     return request<TabView>(`/api/requests/${encodeURIComponent(id)}/send-to-repeater`, {
+      method: 'POST',
+    });
+  },
+
+  sendToIntruder(id: string): Promise<AttackView> {
+    return request<AttackView>(`/api/requests/${encodeURIComponent(id)}/send-to-intruder`, {
       method: 'POST',
     });
   },

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useProxyStore } from '../store/proxyStore';
 import { useConnectionStore } from '../store/connectionStore';
+import { useIntruderStore } from '../store/intruderStore';
 import { getToken } from '../lib/auth';
 import type { WsFrame } from '../lib/types';
 
@@ -16,7 +17,7 @@ function trafficUrl(): string {
 function isWsFrame(value: unknown): value is WsFrame {
   if (typeof value !== 'object' || value === null) return false;
   const t = (value as { type?: unknown }).type;
-  return (t === 'traffic' || t === 'intercept') && 'data' in value;
+  return (t === 'traffic' || t === 'intercept' || t === 'intruder') && 'data' in value;
 }
 
 /**
@@ -26,13 +27,16 @@ function isWsFrame(value: unknown): value is WsFrame {
 export function useWebSocket(): void {
   const applyTraffic = useProxyStore((s) => s.applyTrafficFrame);
   const applyIntercept = useProxyStore((s) => s.applyInterceptFrame);
+  const applyIntruder = useIntruderStore((s) => s.applyUpdate);
   const setStatus = useConnectionStore((s) => s.setStatus);
 
   // Refs avoid re-running the effect when store actions change identity.
   const applyTrafficRef = useRef(applyTraffic);
   const applyInterceptRef = useRef(applyIntercept);
+  const applyIntruderRef = useRef(applyIntruder);
   applyTrafficRef.current = applyTraffic;
   applyInterceptRef.current = applyIntercept;
+  applyIntruderRef.current = applyIntruder;
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -56,8 +60,10 @@ export function useWebSocket(): void {
           if (!isWsFrame(parsed)) return;
           if (parsed.type === 'traffic') {
             applyTrafficRef.current(parsed.data);
-          } else {
+          } else if (parsed.type === 'intercept') {
             applyInterceptRef.current(parsed.data);
+          } else {
+            applyIntruderRef.current(parsed.data);
           }
         } catch {
           // Ignore malformed frames.

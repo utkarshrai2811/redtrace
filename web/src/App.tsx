@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ProxyPage } from './pages/ProxyPage';
 import { SiteMapPage } from './pages/SiteMapPage';
 import { RepeaterPage } from './pages/RepeaterPage';
+import { IntruderPage } from './pages/IntruderPage';
 import { DecoderPage } from './pages/DecoderPage';
 import { ComparerPage } from './pages/ComparerPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/proxy" element={<ProxyPage />} />
           <Route path="/sitemap" element={<SiteMapPage />} />
           <Route path="/repeater" element={<RepeaterPage />} />
+          <Route path="/intruder" element={<IntruderPage />} />
           <Route path="/decoder" element={<DecoderPage />} />
           <Route path="/comparer" element={<ComparerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
