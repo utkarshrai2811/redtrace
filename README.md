@@ -120,8 +120,11 @@ Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Security
 
 RedTrace binds to `127.0.0.1` by default, stores no telemetry, and never phones
-home. To report a vulnerability in RedTrace itself, please follow the process in
-the security issue template rather than opening a public issue.
+home. For remote access, start it with `--token <secret>` and open the UI with
+that token in the URL once (`http://host:9090/?token=<secret>`); the token is
+saved to the session and sent on every API call and the live-traffic
+WebSocket. To report a vulnerability in RedTrace itself, please follow the
+process in the security issue template rather than opening a public issue.
 
 ## License
 
