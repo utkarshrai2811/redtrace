@@ -176,16 +176,14 @@ func (a *API) GetScanTask(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, "get_failed", err)
 		return
 	}
-	all, err := a.Store.ListScanIssues(r.Context())
+	issues, err := a.Store.ListScanIssuesByTask(r.Context(), task.ID)
 	if err != nil {
 		a.serverError(w, "issues_failed", err)
 		return
 	}
-	views := make([]scanIssueView, 0)
-	for _, is := range all {
-		if is.TaskID == task.ID {
-			views = append(views, toScanIssueView(is))
-		}
+	views := make([]scanIssueView, 0, len(issues))
+	for _, is := range issues {
+		views = append(views, toScanIssueView(is))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"task": toScanTaskView(task), "issues": views})
 }
