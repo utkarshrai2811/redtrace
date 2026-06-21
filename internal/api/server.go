@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/utkarshrai2811/redtrace/internal/ai"
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
@@ -32,6 +33,7 @@ type Config struct {
 	Version    string
 	ProxyInfo  handlers.ProxyInfo
 	OOB        oob.Config
+	AI         ai.Config
 }
 
 // Server serves the REST API, WebSocket, and embedded UI.
@@ -67,6 +69,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 	crawl := crawler.NewCrawler(handlers.CrawlerStore{DB: store}, hub.BroadcastCrawl, sc.InScope, scanPage)
 	seq := sequencer.NewSequencer(handlers.SequencerStore{DB: store}, hub.BroadcastSequencer)
 	oobSrv := oob.New(cfg.OOB, handlers.OOBStore{DB: store}, hub.BroadcastOOB, logger)
+	aiSvc := ai.NewService(cfg.AI, logger)
 	a := &handlers.API{
 		Store:       store,
 		Scope:       sc,
@@ -80,6 +83,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Crawler:     crawl,
 		Sequencer:   seq,
 		OOB:         oobSrv,
+		AI:          aiSvc,
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,

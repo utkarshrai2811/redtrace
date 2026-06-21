@@ -110,6 +110,16 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/oob/interactions", a.ClearOOBInteractions)
 	mux.HandleFunc("GET /api/oob/interactions/{id}", a.GetOOBInteraction)
 
+	// AI assistant
+	mux.HandleFunc("GET /api/ai/config", a.AIConfig)
+	mux.HandleFunc("PUT /api/ai/config", a.UpdateAIConfig)
+	mux.HandleFunc("GET /api/ai/conversations", a.ListAIConversations)
+	mux.HandleFunc("POST /api/ai/conversations", a.CreateAIConversation)
+	mux.HandleFunc("DELETE /api/ai/conversations", a.ClearAIConversations)
+	mux.HandleFunc("GET /api/ai/conversations/{id}", a.GetAIConversation)
+	mux.HandleFunc("DELETE /api/ai/conversations/{id}", a.DeleteAIConversation)
+	mux.HandleFunc("POST /api/ai/conversations/{id}/messages", a.StreamAIMessage)
+
 	// Live traffic stream
 	mux.HandleFunc("GET /ws/traffic", a.Hub.ServeWS)
 

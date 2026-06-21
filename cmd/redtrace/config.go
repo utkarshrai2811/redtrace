@@ -22,6 +22,10 @@ type Config struct {
 	OOBPublicIP   string
 	OOBHTTPListen string
 	OOBDNSListen  string
+	AIProvider    string
+	AIModel       string
+	AIAPIKey      string
+	AIBaseURL     string
 }
 
 func loadConfig() Config {
@@ -42,6 +46,10 @@ func loadConfig() Config {
 		OOBPublicIP:   viper.GetString("oob.public-ip"),
 		OOBHTTPListen: firstNonEmpty(viper.GetString("oob.http-listen"), "0.0.0.0:8888"),
 		OOBDNSListen:  firstNonEmpty(viper.GetString("oob.dns-listen"), "0.0.0.0:5353"),
+		AIProvider:    viper.GetString("ai.provider"),
+		AIModel:       viper.GetString("ai.model"),
+		AIAPIKey:      viper.GetString("ai.api-key"),
+		AIBaseURL:     viper.GetString("ai.base-url"),
 	}
 }
 

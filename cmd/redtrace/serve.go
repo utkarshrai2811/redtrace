@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/utkarshrai2811/redtrace/internal/ai"
 	"github.com/utkarshrai2811/redtrace/internal/api"
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
 	"github.com/utkarshrai2811/redtrace/internal/oob"
@@ -39,6 +40,10 @@ func init() {
 	f.String("oob-public-ip", "", "IPv4 the OOB DNS listener answers with (your public IP)")
 	f.String("oob-http-listen", "", "OOB HTTP listener address (default 0.0.0.0:8888)")
 	f.String("oob-dns-listen", "", "OOB DNS listener address (default 0.0.0.0:5353)")
+	f.String("ai-provider", "", "AI provider: anthropic or openai (default anthropic)")
+	f.String("ai-model", "", "AI model id (e.g. claude-sonnet-4-6, gpt-4o-mini)")
+	f.String("ai-api-key", "", "AI provider API key (enables the AI assistant)")
+	f.String("ai-base-url", "", "OpenAI-compatible base URL (e.g. http://127.0.0.1:11434/v1 for a local model)")
 	_ = viper.BindPFlag("proxy.listen", f.Lookup("proxy-listen"))
 	_ = viper.BindPFlag("api.listen", f.Lookup("api-listen"))
 	_ = viper.BindPFlag("upstream.proxy", f.Lookup("upstream-proxy"))
@@ -47,6 +52,10 @@ func init() {
 	_ = viper.BindPFlag("oob.public-ip", f.Lookup("oob-public-ip"))
 	_ = viper.BindPFlag("oob.http-listen", f.Lookup("oob-http-listen"))
 	_ = viper.BindPFlag("oob.dns-listen", f.Lookup("oob-dns-listen"))
+	_ = viper.BindPFlag("ai.provider", f.Lookup("ai-provider"))
+	_ = viper.BindPFlag("ai.model", f.Lookup("ai-model"))
+	_ = viper.BindPFlag("ai.api-key", f.Lookup("ai-api-key"))
+	_ = viper.BindPFlag("ai.base-url", f.Lookup("ai-base-url"))
 }
 
 func runServe(cmd *cobra.Command, _ []string) error {
@@ -102,6 +111,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 			Domain: cfg.OOBDomain, PublicIP: cfg.OOBPublicIP,
 			HTTPAddr: cfg.OOBHTTPListen, DNSAddr: cfg.OOBDNSListen,
 		},
+		AI: resolveAIConfig(db, cfg),
 	}, db, sc, rules, interceptor, authority, logger)
 	if err != nil {
 		return fmt.Errorf("init api: %w", err)
@@ -119,6 +129,29 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	g.Go(func() error { return srv.Run(ctx) })
 	g.Go(func() error { return srv.RunOOB(ctx) })
 	return g.Wait()
+}
+
+// resolveAIConfig assembles the startup AI configuration. Flags/env take
+// precedence; any field they leave empty falls back to the settings persisted in
+// the local database (set via the Settings UI). The key is not written back to
+// disk here — only an explicit Settings save persists it.
+func resolveAIConfig(db *storage.DB, cfg Config) ai.Config {
+	out := ai.Config{Provider: cfg.AIProvider, Model: cfg.AIModel, APIKey: cfg.AIAPIKey, BaseURL: cfg.AIBaseURL}
+	if s, ok, err := db.LoadAISettings(context.Background()); err == nil && ok {
+		if out.Provider == "" {
+			out.Provider = s.Provider
+		}
+		if out.Model == "" {
+			out.Model = s.Model
+		}
+		if out.BaseURL == "" {
+			out.BaseURL = s.BaseURL
+		}
+		if out.APIKey == "" {
+			out.APIKey = s.APIKey
+		}
+	}
+	return out
 }
 
 func printBanner(cfg Config) {

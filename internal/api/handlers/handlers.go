@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/utkarshrai2811/redtrace/internal/ai"
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
 	"github.com/utkarshrai2811/redtrace/internal/oob"
@@ -38,6 +39,7 @@ type API struct {
 	Crawler     *crawler.Crawler
 	Sequencer   *sequencer.Sequencer
 	OOB         *oob.Server
+	AI          *ai.Service
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger
