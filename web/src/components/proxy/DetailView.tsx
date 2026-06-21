@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProxyStore } from '../../store/proxyStore';
+import { useAIStore } from '../../store/aiStore';
 import { decode, type Decoded } from '../../lib/encoding';
 import { api, ApiError } from '../../lib/api';
 import { MethodBadge, statusTextClass } from './badges';
@@ -204,6 +205,25 @@ export function DetailView() {
           className="shrink-0"
         >
           Send to Sequencer
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const context =
+              'Explain this HTTP exchange.\n\n=== REQUEST ===\n' +
+              requestData.text +
+              (responseData.text ? '\n\n=== RESPONSE ===\n' + responseData.text : '');
+            void useAIStore.getState().startFromContext({
+              kind: 'explain',
+              title: `Explain ${request.method} ${request.path}`,
+              context,
+            });
+            navigate('/ai');
+          }}
+          className="shrink-0"
+        >
+          Send to AI
         </Button>
       </div>
 

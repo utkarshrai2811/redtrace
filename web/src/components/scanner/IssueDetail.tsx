@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
+import { useAIStore } from '../../store/aiStore';
 import { decode, type Decoded } from '../../lib/encoding';
 import { Spinner } from '../ui/Spinner';
+import { Button } from '../ui/Button';
 import { SeverityBadge, ConfidenceBadge, OriginBadge } from './badges';
 import type { ScanIssueDetail } from '../../lib/types';
 
@@ -53,6 +56,7 @@ export function IssueDetail({ issueId, onClose }: IssueDetailProps) {
   const [detail, setDetail] = useState<ScanIssueDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +93,31 @@ export function IssueDetail({ issueId, onClose }: IssueDetailProps) {
 
   const issue = detail?.issue;
 
+  const triageWithAI = () => {
+    if (!issue) return;
+    const lines = [
+      'Triage this scanner finding.',
+      '',
+      `Name: ${issue.name}`,
+      `Severity: ${issue.severity}`,
+      `Confidence: ${issue.confidence}`,
+      `Location: ${issue.method} ${issue.scheme}://${issue.host}:${issue.port}${issue.path}` +
+        (issue.param ? `  param=${issue.param}` : ''),
+      `Detail: ${issue.detail}`,
+      `Evidence: ${issue.evidence}`,
+      `Remediation (scanner's): ${issue.remediation}`,
+    ];
+    let context = lines.join('\n');
+    if (requestData.text) context += '\n\n=== REQUEST ===\n' + requestData.text;
+    if (responseData.text) context += '\n\n=== RESPONSE ===\n' + responseData.text;
+    void useAIStore.getState().startFromContext({
+      kind: 'triage',
+      title: `Triage: ${issue.name}`,
+      context,
+    });
+    navigate('/ai');
+  };
+
   return (
     <div className="flex min-h-0 flex-col border-t border-zinc-800">
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 bg-panel px-3 py-1.5 text-xs">
@@ -101,6 +130,9 @@ export function IssueDetail({ issueId, onClose }: IssueDetailProps) {
             </span>
             <ConfidenceBadge confidence={issue.confidence} />
             <OriginBadge origin={issue.origin} />
+            <Button size="sm" variant="outline" onClick={triageWithAI} className="shrink-0">
+              Triage with AI
+            </Button>
           </>
         )}
         {!issue && <span className="min-w-0 flex-1" />}

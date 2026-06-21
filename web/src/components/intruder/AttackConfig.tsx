@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -14,6 +15,7 @@ import {
   projectedJobCount,
   useIntruderStore,
 } from '../../store/intruderStore';
+import { useAIStore } from '../../store/aiStore';
 import type { AttackType, PayloadSet } from '../../lib/types';
 
 const ATTACK_TYPES: { value: AttackType; label: string }[] = [
@@ -42,11 +44,26 @@ export function AttackConfig() {
   const actionError = useIntruderStore((s) => s.actionError);
 
   const templateRef = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
 
   const attack = attacks.find((a) => a.id === selectedId);
   const running = attack?.status === 'running';
 
   if (!draft) return null;
+
+  const suggestPayloads = () => {
+    const typeLabel = ATTACK_TYPES.find((t) => t.value === draft.type)?.label ?? draft.type;
+    const context =
+      'Suggest test payloads for the marked insertion points (§…§) in this request.\n\n' +
+      `Attack type: ${typeLabel}\n\n` +
+      draft.templateText;
+    void useAIStore.getState().startFromContext({
+      kind: 'payloads',
+      title: 'Payload suggestions',
+      context,
+    });
+    navigate('/ai');
+  };
 
   const positions = countPositions(draft.templateText);
   const needsPerPosition = draft.type === 'pitchfork' || draft.type === 'cluster_bomb';
@@ -181,6 +198,9 @@ export function AttackConfig() {
             {attack.completed} / {attack.total}
           </span>
         )}
+        <Button size="sm" variant="outline" onClick={suggestPayloads}>
+          Suggest payloads (AI)
+        </Button>
         <span className="ml-auto font-mono text-2xs text-zinc-500">
           {jobCount.toLocaleString('en-US')} request{jobCount === 1 ? '' : 's'} · {positions}{' '}
           position{positions === 1 ? '' : 's'}

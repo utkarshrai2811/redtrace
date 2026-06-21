@@ -627,3 +627,49 @@ export interface OOBInteractionDetail {
   interaction: OOBInteractionView;
   raw: string;
 }
+
+// --- AI ---
+
+export type AIProvider = 'anthropic' | 'openai';
+export type AIKind = 'chat' | 'explain' | 'triage' | 'payloads';
+
+export interface AIConfig {
+  enabled: boolean;
+  provider: AIProvider;
+  model: string;
+  baseUrl: string;
+  keySet: boolean;
+}
+
+export interface AIConfigInput {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+}
+
+export interface AIConversationView {
+  id: string;
+  title: string;
+  kind: AIKind;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIMessageView {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface AIConversationDetail {
+  conversation: AIConversationView;
+  messages: AIMessageView[];
+}
+
+export interface AICreateInput {
+  kind: AIKind;
+  title?: string;
+  context?: string;
+}

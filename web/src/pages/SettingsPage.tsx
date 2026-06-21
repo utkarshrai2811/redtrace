@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ScopeEditor } from '../components/settings/ScopeEditor';
 import { MatchReplaceEditor } from '../components/settings/MatchReplaceEditor';
+import { AISettings } from '../components/settings/AISettings';
 import { useSettingsStore } from '../store/settingsStore';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -79,6 +80,7 @@ export function SettingsPage() {
             </Card>
           </div>
 
+          <AISettings />
           <ScopeEditor />
           <MatchReplaceEditor />
         </div>

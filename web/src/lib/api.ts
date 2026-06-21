@@ -1,5 +1,11 @@
 import { authHeaders } from './auth';
 import type {
+  AIConfig,
+  AIConfigInput,
+  AIConversationDetail,
+  AIConversationView,
+  AICreateInput,
+  AIMessageView,
   ComparerMode,
   ComparerResponse,
   CrawlTaskDetail,
@@ -517,4 +523,140 @@ export const api = {
       method: 'POST',
     });
   },
+
+  // --- AI (chat / explain / triage / payloads) ---
+
+  aiConfig(): Promise<AIConfig> {
+    return request<AIConfig>('/api/ai/config');
+  },
+
+  updateAIConfig(input: AIConfigInput): Promise<AIConfig> {
+    // Only include apiKey when defined: omit to keep the current key, send ""
+    // to clear, send a string to set it.
+    const body: AIConfigInput = {
+      provider: input.provider,
+      model: input.model,
+      baseUrl: input.baseUrl,
+    };
+    if (input.apiKey !== undefined) {
+      body.apiKey = input.apiKey;
+    }
+    return request<AIConfig>('/api/ai/config', { method: 'PUT', body: JSON.stringify(body) });
+  },
+
+  aiConversations(): Promise<AIConversationView[]> {
+    return request<AIConversationView[]>('/api/ai/conversations');
+  },
+
+  createAIConversation(input: AICreateInput): Promise<AIConversationDetail> {
+    return request<AIConversationDetail>('/api/ai/conversations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  aiConversation(id: string): Promise<AIConversationDetail> {
+    return request<AIConversationDetail>(`/api/ai/conversations/${encodeURIComponent(id)}`);
+  },
+
+  deleteAIConversation(id: string): Promise<void> {
+    return request<void>(`/api/ai/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  clearAIConversations(): Promise<void> {
+    return request<void>('/api/ai/conversations', { method: 'DELETE' });
+  },
 };
+
+/** Callbacks for an in-progress streamed AI turn. */
+export interface StreamCallbacks {
+  onDelta(text: string): void;
+  onDone(message: AIMessageView): void;
+  onError(message: string): void;
+}
+
+/**
+ * Stream an assistant reply over Server-Sent Events. Uses raw fetch (not the
+ * request wrapper) so the response body can be read incrementally. When content
+ * is non-empty it appends a user turn first; a null content just generates a
+ * reply for the current messages. A non-OK response (e.g. AI disabled) is a JSON
+ * error envelope and is rethrown as an ApiError.
+ */
+export async function streamAIMessage(
+  id: string,
+  content: string | null,
+  cb: StreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/ai/conversations/${encodeURIComponent(id)}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(content ? { content } : {}),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    let code = 'http_error';
+    let message = res.statusText;
+    try {
+      const j: unknown = await res.json();
+      if (isErrorEnvelope(j)) {
+        code = j.error.code ?? code;
+        message = j.error.message ?? message;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, code, message);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n\n')) >= 0) {
+      const frame = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      // Parse the "event:" / "data:" lines of one SSE frame.
+      let ev = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) ev = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).replace(/^ /, '');
+      }
+      if (!data) continue;
+      try {
+        const parsed: unknown = JSON.parse(data);
+        if (ev === 'delta' && isDelta(parsed)) {
+          cb.onDelta(parsed.text);
+        } else if (ev === 'done') {
+          cb.onDone(parsed as AIMessageView);
+        } else if (ev === 'error') {
+          cb.onError(isStreamError(parsed) ? parsed.message : 'AI error');
+        }
+      } catch {
+        /* ignore malformed frame */
+      }
+    }
+  }
+}
+
+function isDelta(value: unknown): value is { text: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { text: unknown }).text === 'string'
+  );
+}
+
+function isStreamError(value: unknown): value is { message: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { message: unknown }).message === 'string'
+  );
+}

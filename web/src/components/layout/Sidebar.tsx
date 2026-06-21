@@ -73,6 +73,11 @@ const ENABLED: NavItem[] = [
     icon: <Icon d="M5 12a7 7 0 1014 0 7 7 0 00-14 0zM12 2v3M12 19v3M2 12h3M19 12h3M9 12h6M12 9v6" />,
   },
   {
+    label: 'AI',
+    to: '/ai',
+    icon: <Icon d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />,
+  },
+  {
     label: 'Decoder',
     to: '/decoder',
     icon: <Icon d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
@@ -91,7 +96,7 @@ const ENABLED: NavItem[] = [
   },
 ];
 
-const DISABLED = ['AI'];
+const DISABLED: string[] = [];
 
 function ConnectionDot() {
   const status = useConnectionStore((s) => s.status);
@@ -141,24 +146,28 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        <div className="px-2.5 pb-1 pt-4 text-2xs font-medium uppercase tracking-wider text-zinc-600">
-          Modules
-        </div>
+        {DISABLED.length > 0 && (
+          <>
+            <div className="px-2.5 pb-1 pt-4 text-2xs font-medium uppercase tracking-wider text-zinc-600">
+              Modules
+            </div>
 
-        {DISABLED.map((label) => (
-          <div
-            key={label}
-            aria-disabled="true"
-            title="Coming soon"
-            className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-zinc-600"
-          >
-            <span className="h-[15px] w-[15px] shrink-0 rounded-sm border border-zinc-700/60" />
-            <span className="flex-1">{label}</span>
-            <span className="rounded bg-zinc-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500">
-              soon
-            </span>
-          </div>
-        ))}
+            {DISABLED.map((label) => (
+              <div
+                key={label}
+                aria-disabled="true"
+                title="Coming soon"
+                className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-zinc-600"
+              >
+                <span className="h-[15px] w-[15px] shrink-0 rounded-sm border border-zinc-700/60" />
+                <span className="flex-1">{label}</span>
+                <span className="rounded bg-zinc-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500">
+                  soon
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </nav>
 
       <div className="border-t border-zinc-800">
