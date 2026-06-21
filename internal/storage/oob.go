@@ -16,8 +16,8 @@ func (db *DB) CreateOOBPayload(ctx context.Context, p *models.OOBPayload) error 
 		p.CreatedAt = time.Now()
 	}
 	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO oob_payloads (token, host, note, created_at) VALUES (?,?,?,?)`,
-		p.Token, p.Host, p.Note, p.CreatedAt.Format(timeLayout))
+		`INSERT INTO oob_payloads (token, host, created_at) VALUES (?,?,?)`,
+		p.Token, p.Host, p.CreatedAt.Format(timeLayout))
 	if err != nil {
 		return fmt.Errorf("create oob payload: %w", err)
 	}
@@ -27,7 +27,7 @@ func (db *DB) CreateOOBPayload(ctx context.Context, p *models.OOBPayload) error 
 // ListOOBPayloads returns payloads newest first, each with its interaction count.
 func (db *DB) ListOOBPayloads(ctx context.Context) ([]*models.OOBPayload, map[string]int, error) {
 	rows, err := db.sql.QueryContext(ctx,
-		`SELECT token, host, note, created_at FROM oob_payloads ORDER BY created_at DESC`)
+		`SELECT token, host, created_at FROM oob_payloads ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list oob payloads: %w", err)
 	}
@@ -37,7 +37,7 @@ func (db *DB) ListOOBPayloads(ctx context.Context) ([]*models.OOBPayload, map[st
 	for rows.Next() {
 		p := &models.OOBPayload{}
 		var created string
-		if err := rows.Scan(&p.Token, &p.Host, &p.Note, &created); err != nil {
+		if err := rows.Scan(&p.Token, &p.Host, &created); err != nil {
 			return nil, nil, fmt.Errorf("scan oob payload: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(timeLayout, created)

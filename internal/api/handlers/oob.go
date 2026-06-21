@@ -23,13 +23,12 @@ type oobPayloadView struct {
 	Token        string    `json:"token"`
 	Host         string    `json:"host"`
 	HTTPURL      string    `json:"httpUrl"`
-	HTTPSURL     string    `json:"httpsUrl"`
 	Interactions int       `json:"interactions"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
 func payloadView(host string) oobPayloadView {
-	return oobPayloadView{Host: host, HTTPURL: "http://" + host + "/", HTTPSURL: "https://" + host + "/"}
+	return oobPayloadView{Host: host, HTTPURL: "http://" + host + "/"}
 }
 
 type oobInteractionView struct {
@@ -60,8 +59,12 @@ func (a *API) OOBConfig(w http.ResponseWriter, _ *http.Request) {
 // GenerateOOBPayload handles POST /api/oob/payloads.
 func (a *API) GenerateOOBPayload(w http.ResponseWriter, r *http.Request) {
 	p, err := a.OOB.NewPayload(r.Context())
+	if errors.Is(err, oob.ErrDisabled) {
+		writeError(w, http.StatusBadRequest, "oob_disabled", "oob is not configured")
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "oob_disabled", err.Error())
+		a.serverError(w, "create_failed", err)
 		return
 	}
 	v := payloadView(p.Host)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -51,6 +52,19 @@ func init() {
 func runServe(cmd *cobra.Command, _ []string) error {
 	cfg := loadConfig()
 	logger := newLogger(cfg.LogLevel)
+
+	if cfg.OOBDomain != "" {
+		if _, _, err := net.SplitHostPort(cfg.OOBHTTPListen); err != nil {
+			return fmt.Errorf("invalid --oob-http-listen %q: %w", cfg.OOBHTTPListen, err)
+		}
+		if _, _, err := net.SplitHostPort(cfg.OOBDNSListen); err != nil {
+			return fmt.Errorf("invalid --oob-dns-listen %q: %w", cfg.OOBDNSListen, err)
+		}
+		if net.ParseIP(cfg.OOBPublicIP) == nil {
+			logger.Warn("oob: --oob-public-ip is unset or not a valid IP; DNS A answers are disabled",
+				"value", cfg.OOBPublicIP)
+		}
+	}
 
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)

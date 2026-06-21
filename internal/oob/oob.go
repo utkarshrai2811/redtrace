@@ -9,9 +9,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 )
+
+// ErrDisabled is returned when an OOB operation is attempted while the feature
+// is not configured. Callers distinguish it (a user-facing 400) from a genuine
+// storage failure (a 500).
+var ErrDisabled = errors.New("oob is not configured")
 
 // Config describes the OOB listeners. The feature is enabled only when a domain
 // is configured; the listeners then bind to the configured addresses (which the
@@ -37,7 +43,7 @@ type Payload struct {
 type Interaction struct {
 	ID        string
 	Token     string
-	Protocol  string // "dns" | "http" | "https"
+	Protocol  string // "dns" | "http"
 	SourceIP  string
 	Query     string
 	Detail    string
@@ -51,28 +57,42 @@ type Store interface {
 	SaveInteraction(ctx context.Context, i Interaction) error
 }
 
-// tokenFor returns the payload token embedded in a queried name or HTTP Host for
-// the configured domain, or "" if the name is not under the domain. For
-// "<labels…>.<token>.<domain>" it returns the label immediately left of the
-// domain (so DNS-exfil prefixes still correlate to the right payload).
-func tokenFor(name, domain string) string {
+// normalizeDomain lower-cases the configured OOB domain and trims a leading or
+// trailing dot so name matching is consistent.
+func normalizeDomain(domain string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(domain, "."), "."))
+}
+
+// match reports whether a queried name or HTTP Host falls under the configured
+// OOB domain and, if so, the payload token embedded in it. For
+// "<labels…>.<token>.<domain>" the token is the label immediately left of the
+// domain (so DNS-exfil prefixes still correlate to the right payload). The apex
+// is under the domain but carries no token. A name outside the domain returns
+// ("", false) — callers use this to ignore unrelated callbacks entirely.
+func match(name, domain string) (token string, under bool) {
 	name = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
-	domain = strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(domain, "."), "."))
-	if domain == "" || name == domain {
-		return ""
+	domain = normalizeDomain(domain)
+	if domain == "" {
+		return "", false
+	}
+	if name == domain {
+		return "", true
 	}
 	prefix, ok := strings.CutSuffix(name, "."+domain)
 	if !ok || prefix == "" {
-		return ""
+		return "", false
 	}
 	labels := strings.Split(prefix, ".")
-	return labels[len(labels)-1]
+	return labels[len(labels)-1], true
 }
 
+// randHex returns n cryptographically random bytes as hex. A crypto/rand failure
+// is unrecoverable (and would otherwise yield a colliding empty primary key), so
+// it panics rather than returning an empty string.
 func randHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		return ""
+		panic("oob: crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)
 }

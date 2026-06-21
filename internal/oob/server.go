@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -40,10 +40,10 @@ func (s *Server) Config() Config { return s.cfg }
 // NewPayload generates, persists, and returns a fresh OOB payload.
 func (s *Server) NewPayload(ctx context.Context) (Payload, error) {
 	if !s.cfg.Enabled() {
-		return Payload{}, errors.New("oob is not configured")
+		return Payload{}, ErrDisabled
 	}
 	p := Payload{Token: randHex(10), CreatedAt: time.Now()}
-	p.Host = p.Token + "." + strings.TrimPrefix(s.cfg.Domain, ".")
+	p.Host = p.Token + "." + normalizeDomain(s.cfg.Domain)
 	if err := s.store.SavePayload(ctx, p); err != nil {
 		return Payload{}, err
 	}
@@ -65,10 +65,12 @@ func (s *Server) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-// record persists and broadcasts a captured interaction.
-func (s *Server) record(protocol, sourceIP, query, detail string, raw []byte) {
+// record persists and broadcasts a captured interaction. Callers gate on the
+// queried name being under the OOB domain before recording, so token is the
+// already-resolved payload token (the caller has the parsed name in hand).
+func (s *Server) record(protocol, sourceIP, query, token, detail string, raw []byte) {
 	i := Interaction{
-		ID: randHex(16), Token: tokenFor(query, s.cfg.Domain), Protocol: protocol,
+		ID: randHex(16), Token: token, Protocol: protocol,
 		SourceIP: sourceIP, Query: query, Detail: detail, Raw: raw, CreatedAt: time.Now(),
 	}
 	if err := s.store.SaveInteraction(context.Background(), i); err != nil {
@@ -101,19 +103,28 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 }
 
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxOOBBody)
-	raw, _ := httputil.DumpRequest(r, true)
+	// Truncate (rather than reject) an oversized body so the capture still
+	// succeeds; the request line and headers are the point of an OOB callback.
+	r.Body = io.NopCloser(io.LimitReader(r.Body, maxOOBBody))
+	raw, err := httputil.DumpRequest(r, true)
+	if err != nil {
+		// Never store an empty capture: fall back to the headers without a body.
+		raw, _ = httputil.DumpRequest(r, false)
+	}
 	// Strip the listener port from the Host header so the payload token (the
 	// leftmost label under the OOB domain) correlates on non-standard ports.
 	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if h, _, e := net.SplitHostPort(host); e == nil {
 		host = h
 	}
-	detail := fmt.Sprintf("%s %s", r.Method, r.URL.RequestURI())
-	if ua := r.UserAgent(); ua != "" {
-		detail += "  UA: " + ua
+	// Only record callbacks aimed at our domain; ignore unrelated internet noise.
+	if token, under := match(host, s.cfg.Domain); under {
+		detail := fmt.Sprintf("%s %s", r.Method, r.URL.RequestURI())
+		if ua := r.UserAgent(); ua != "" {
+			detail += "  UA: " + ua
+		}
+		s.record("http", clientIP(r.RemoteAddr), host, token, detail, raw)
 	}
-	s.record("http", clientIP(r.RemoteAddr), host, detail, raw)
 
 	w.Header().Set("Server", "redtrace-oob")
 	w.Header().Set("Content-Type", "text/plain")
@@ -148,26 +159,25 @@ func (s *Server) handleDNS(pc net.PacketConn, addr net.Addr, msg []byte, answer 
 	// A malformed packet must never crash the read loop.
 	defer func() { _ = recover() }()
 
-	_, qtype, qname, qend, ok := parseDNSQuery(msg)
+	qtype, qname, qend, ok := parseDNSQuery(msg)
 	if !ok {
 		return
 	}
-	s.record("dns", clientIP(addr.String()), qname, dnsTypeName(qtype)+" "+qname, msg)
+	// Ignore queries outside our domain: don't persist junk rows and don't act
+	// as an open responder/reflector for names we are not authoritative for.
+	token, under := match(qname, s.cfg.Domain)
+	if !under {
+		return
+	}
+	s.record("dns", clientIP(addr.String()), qname, token, dnsTypeName(qtype)+" "+qname, msg)
 
-	// Only answer (with the configured A record) for names under our domain.
 	ip := net.IP(nil)
-	if answer != nil && underDomain(qname, s.cfg.Domain) {
+	if answer != nil {
 		ip = answer
 	}
 	if resp := buildDNSResponse(msg, qend, qtype, ip); resp != nil {
 		_, _ = pc.WriteTo(resp, addr)
 	}
-}
-
-func underDomain(name, domain string) bool {
-	name = strings.ToLower(strings.TrimSuffix(name, "."))
-	domain = strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(domain, "."), "."))
-	return name == domain || strings.HasSuffix(name, "."+domain)
 }
 
 func clientIP(addr string) string {

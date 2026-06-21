@@ -7,7 +7,6 @@ import "time"
 type OOBPayload struct {
 	Token     string    `json:"token"`
 	Host      string    `json:"host"`
-	Note      string    `json:"note,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -16,7 +15,7 @@ type OOBPayload struct {
 type OOBInteraction struct {
 	ID        string    `json:"id"`
 	Token     string    `json:"token,omitempty"`
-	Protocol  string    `json:"protocol"` // "dns" | "http" | "https"
+	Protocol  string    `json:"protocol"` // "dns" | "http"
 	SourceIP  string    `json:"sourceIp"`
 	Query     string    `json:"query"` // queried name (DNS) or Host (HTTP)
 	Detail    string    `json:"detail"`

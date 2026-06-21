@@ -16,23 +16,23 @@ const (
 	dnsTypeCNAME = 5
 )
 
-// parseDNSQuery extracts the header ID, the first question's lowercased QNAME,
-// its QTYPE, and the offset just past the question section. It returns ok=false
-// on any malformed or truncated input — the listener handles untrusted packets,
-// so every length is bounds-checked.
-func parseDNSQuery(msg []byte) (id, qtype uint16, qname string, qend int, ok bool) {
+// parseDNSQuery extracts the first question's lowercased QNAME, its QTYPE, and
+// the offset just past the question section. It returns ok=false on any
+// malformed or truncated input — the listener handles untrusted packets, so
+// every length is bounds-checked. (The transaction ID is carried back to the
+// client verbatim by buildDNSResponse, so it is not returned here.)
+func parseDNSQuery(msg []byte) (qtype uint16, qname string, qend int, ok bool) {
 	if len(msg) < 12 {
-		return 0, 0, "", 0, false
+		return 0, "", 0, false
 	}
-	id = binary.BigEndian.Uint16(msg[0:2])
 	if binary.BigEndian.Uint16(msg[4:6]) < 1 { // QDCOUNT
-		return id, 0, "", 0, false
+		return 0, "", 0, false
 	}
 	off := 12
 	var labels []string
 	for {
 		if off >= len(msg) {
-			return id, 0, "", 0, false
+			return 0, "", 0, false
 		}
 		l := int(msg[off])
 		off++
@@ -41,20 +41,20 @@ func parseDNSQuery(msg []byte) (id, qtype uint16, qname string, qend int, ok boo
 		}
 		// A question name is never compressed; reject pointers and over-long labels.
 		if l > 63 || off+l > len(msg) {
-			return id, 0, "", 0, false
+			return 0, "", 0, false
 		}
 		labels = append(labels, string(msg[off:off+l]))
 		off += l
 		if len(labels) > 127 {
-			return id, 0, "", 0, false
+			return 0, "", 0, false
 		}
 	}
 	if off+4 > len(msg) { // QTYPE(2) + QCLASS(2)
-		return id, 0, "", 0, false
+		return 0, "", 0, false
 	}
 	qtype = binary.BigEndian.Uint16(msg[off : off+2])
 	off += 4
-	return id, qtype, strings.ToLower(strings.Join(labels, ".")), off, true
+	return qtype, strings.ToLower(strings.Join(labels, ".")), off, true
 }
 
 // buildDNSResponse echoes the query's question and, for an A query when ip is a
