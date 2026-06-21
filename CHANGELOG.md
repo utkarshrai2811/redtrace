@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entropy, effective bits, and a quality verdict). Both run as bounded,
   cancellable background jobs with live progress, add Send-to-Crawler and
   Send-to-Sequencer actions from proxy history, and persist (migration 0006).
+- Phase 6: Out-of-band / Collaborator — a self-hosted OOB interaction server.
+  When enabled (`--oob-domain`), it runs a catch-all HTTP listener and a minimal
+  DNS responder under the configured domain; generated `<token>.<domain>`
+  payloads planted in a target surface blind vulnerabilities (SSRF/XXE/RCE,
+  etc.) when the target calls back. Every DNS query or HTTP request is captured,
+  correlated to its payload token, streamed live over the WebSocket, and
+  persisted (migration 0007). The listeners are opt-in and bind to a
+  user-chosen address (intentionally reachable by targets); captured
+  interactions are viewable only through the authenticated API/UI.
 
 ### Fixed
 - Post-Phase-5 (Crawler & Sequencer) review pass:
