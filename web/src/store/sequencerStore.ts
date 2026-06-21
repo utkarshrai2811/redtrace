@@ -59,6 +59,7 @@ interface SequencerState {
 
   fetchTasks: () => Promise<void>;
   selectTask: (id: string) => Promise<void>;
+  refreshReport: (id: string) => Promise<void>;
   clearSelectedTask: () => void;
   updateDraft: (patch: Partial<SeqDraft>) => void;
   saveDraft: () => Promise<SeqTaskView | null>;
@@ -125,6 +126,25 @@ export const useSequencerStore = create<SequencerState>((set, get) => ({
       if (token !== detailToken) return;
       const message = err instanceof ApiError ? err.message : 'Failed to load task';
       set({ loadingDetail: false, detailError: message });
+    }
+  },
+
+  // refreshReport refetches a finished capture's report/tokens IN PLACE — without
+  // the loading spinner or clearing the pane — so a completing capture updates
+  // smoothly instead of flashing the whole detail view.
+  refreshReport: async (id) => {
+    const token = detailToken;
+    try {
+      const { task, report, tokens } = await api.getSequencerTask(id);
+      if (token !== detailToken || get().selectedTaskId !== id) return;
+      set((s) => ({
+        selectedTask: task,
+        report,
+        tokens,
+        tasks: s.tasks.map((t) => (t.id === task.id ? task : t)),
+      }));
+    } catch {
+      // Ignore a refresh failure; counters/status already updated from the frame.
     }
   },
 
@@ -228,15 +248,15 @@ export const useSequencerStore = create<SequencerState>((set, get) => ({
       return { tasks, selectedTask };
     });
 
-    // When a capture finishes for the selected task, refetch the report+tokens.
-    // selectTask carries the detailToken guard, so a stale completion is safe.
+    // When a capture finishes for the selected task, refresh the report/tokens
+    // in place (no full-pane spinner flash); the detailToken guard keeps it safe.
     if (
       u.kind === 'status' &&
       u.status &&
       TERMINAL.has(u.status) &&
       u.taskId === get().selectedTaskId
     ) {
-      void get().selectTask(u.taskId);
+      void get().refreshReport(u.taskId);
     }
   },
 }));

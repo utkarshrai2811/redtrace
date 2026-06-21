@@ -38,9 +38,10 @@ interface CrawlerState {
   loadingDetail: boolean;
   detailError: string | null;
   actionError: string | null;
+  createError: string | null;
 
   fetchTasks: () => Promise<void>;
-  createTask: (input: CrawlTaskInput) => Promise<void>;
+  createTask: (input: CrawlTaskInput) => Promise<boolean>;
   selectTask: (id: string) => Promise<void>;
   clearSelectedTask: () => void;
   startTask: (id: string) => Promise<void>;
@@ -63,6 +64,7 @@ export const useCrawlerStore = create<CrawlerState>((set, get) => ({
   loadingDetail: false,
   detailError: null,
   actionError: null,
+  createError: null,
 
   fetchTasks: async () => {
     set({ loadingTasks: true, tasksError: null });
@@ -76,14 +78,18 @@ export const useCrawlerStore = create<CrawlerState>((set, get) => ({
   },
 
   createTask: async (input) => {
-    set({ tasksError: null });
+    // Use a dedicated createError so a bad seed never replaces the existing
+    // crawl list (tasksError is reserved for list-load failures).
+    set({ createError: null });
     try {
       const task = await api.createCrawlTask(input);
       set((s) => ({ tasks: [...s.tasks, task] }));
       void get().selectTask(task.id);
+      return true;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to create crawl';
-      set({ tasksError: message });
+      set({ createError: message });
+      return false;
     }
   },
 
@@ -163,11 +169,18 @@ export const useCrawlerStore = create<CrawlerState>((set, get) => ({
 
   applyUpdate: (u) => {
     set((s) => {
-      if (u.kind === 'page' && u.page && u.taskId && u.taskId === s.selectedTaskId) {
-        // Append the freshly discovered URL, deduped by url (a reload + live
-        // updates must never duplicate).
-        if (s.taskUrls.some((r) => r.url === u.page!.url)) return {};
-        return { taskUrls: [...s.taskUrls, rowFromPage(u.taskId, u.page)] };
+      if (u.kind === 'page') {
+        // page frames carry no pages/found counters (they default to 0), so they
+        // must never reach the counter patch below — only append the live URL row
+        // for the selected task, deduped by url.
+        if (
+          u.page &&
+          u.taskId === s.selectedTaskId &&
+          !s.taskUrls.some((r) => r.url === u.page!.url)
+        ) {
+          return { taskUrls: [...s.taskUrls, rowFromPage(u.taskId!, u.page)] };
+        }
+        return {};
       }
 
       // progress / status: patch the matching task's counters in the list, and

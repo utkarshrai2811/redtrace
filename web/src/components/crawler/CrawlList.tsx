@@ -8,17 +8,23 @@ import { useCrawlerStore } from '../../store/crawlerStore';
 
 function NewCrawlForm({ onClose }: { onClose: () => void }) {
   const createTask = useCrawlerStore((s) => s.createTask);
+  const createError = useCrawlerStore((s) => s.createError);
   const [seed, setSeed] = useState('');
   const [maxDepth, setMaxDepth] = useState(3);
   const [maxPages, setMaxPages] = useState(100);
+  const [submitting, setSubmitting] = useState(false);
 
   const trimmed = seed.trim();
-  const canCreate = trimmed.length > 0;
+  const canCreate = trimmed.length > 0 && !submitting;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canCreate) return;
-    void createTask({ name: '', seed: trimmed, maxDepth, maxPages });
-    onClose();
+    setSubmitting(true);
+    // Keep the form open on failure so the bad seed shows its error inline and
+    // can be corrected, rather than closing and clobbering the list.
+    const ok = await createTask({ name: '', seed: trimmed, maxDepth, maxPages });
+    setSubmitting(false);
+    if (ok) onClose();
   };
 
   return (
@@ -26,7 +32,7 @@ function NewCrawlForm({ onClose }: { onClose: () => void }) {
       className="space-y-2 border-b border-zinc-800 px-3 py-3"
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        void submit();
       }}
     >
       <label className="block">
@@ -66,6 +72,7 @@ function NewCrawlForm({ onClose }: { onClose: () => void }) {
           />
         </label>
       </div>
+      {createError && <p className="text-xs text-red-400">{createError}</p>}
       <div className="flex items-center justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onClose}>
           Cancel
