@@ -36,20 +36,26 @@ func TestExtractLinks(t *testing.T) {
 
 // fakeCrawlStore records fetched pages and signals on terminal status.
 type fakeCrawlStore struct {
-	mu    sync.Mutex
-	pages map[string]bool
-	done  chan struct{}
+	mu       sync.Mutex
+	pages    map[string]bool
+	addCalls int
+	status   string
+	done     chan struct{}
 }
 
 func (s *fakeCrawlStore) PrepareCrawlRun(context.Context, string) error { return nil }
 func (s *fakeCrawlStore) AddPage(_ context.Context, _ string, p Page) (bool, error) {
 	s.mu.Lock()
 	s.pages[p.Path] = true
+	s.addCalls++
 	s.mu.Unlock()
 	return true, nil
 }
 func (s *fakeCrawlStore) UpdateCrawlProgress(context.Context, string, int, int) error { return nil }
-func (s *fakeCrawlStore) SetCrawlStatus(_ context.Context, _, _ string) error {
+func (s *fakeCrawlStore) SetCrawlStatus(_ context.Context, _, status string) error {
+	s.mu.Lock()
+	s.status = status
+	s.mu.Unlock()
 	close(s.done)
 	return nil
 }
@@ -92,6 +98,75 @@ func TestCrawlDiscoversLinkedPages(t *testing.T) {
 		if !store.pages[want] {
 			t.Errorf("expected to crawl %q; crawled %v", want, got)
 		}
+	}
+}
+
+func TestCrawlSkipsOutOfScopeSeed(t *testing.T) {
+	var hits int
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	store := &fakeCrawlStore{pages: map[string]bool{}, done: make(chan struct{})}
+	// Nothing is in scope: the seed must not be fetched.
+	c := NewCrawler(store, nil, func(string, string) bool { return false }, nil)
+	started, err := c.Start("t1", Config{Seed: srv.URL + "/", MaxDepth: 1, MaxPages: 10, HTTPVersion: "HTTP/1.1"})
+	if err != nil || !started {
+		t.Fatalf("Start = (%v, %v)", started, err)
+	}
+	select {
+	case <-store.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("crawl did not finish")
+	}
+	mu.Lock()
+	gotHits := hits
+	mu.Unlock()
+	if gotHits != 0 {
+		t.Errorf("out-of-scope seed was fetched (%d hits)", gotHits)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.pages) != 0 {
+		t.Errorf("stored %d pages for an out-of-scope crawl, want 0", len(store.pages))
+	}
+	if store.status != StatusError {
+		t.Errorf("status = %q, want error (no pages fetched)", store.status)
+	}
+}
+
+func TestSeedTrailingSlashDedup(t *testing.T) {
+	// Root links to "/" (a common self/home link). A bare-host seed (no trailing
+	// slash) must dedup against the resolved ".../" so the homepage is not
+	// fetched twice.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<a href="/">home</a>`))
+	}))
+	defer srv.Close()
+
+	store := &fakeCrawlStore{pages: map[string]bool{}, done: make(chan struct{})}
+	c := NewCrawler(store, nil, func(string, string) bool { return true }, nil)
+	// srv.URL has no trailing slash (Path == "").
+	started, err := c.Start("t1", Config{Seed: srv.URL, MaxDepth: 2, MaxPages: 50, HTTPVersion: "HTTP/1.1"})
+	if err != nil || !started {
+		t.Fatalf("Start = (%v, %v)", started, err)
+	}
+	select {
+	case <-store.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("crawl did not finish")
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.addCalls != 1 {
+		t.Errorf("AddPage called %d times, want 1 (homepage must not be fetched twice)", store.addCalls)
 	}
 }
 

@@ -90,8 +90,12 @@ func (c *Crawler) Start(taskID string, cfg Config) (bool, error) {
 		pages, found := c.runCrawl(ctx, bg, taskID, cfg)
 
 		status := StatusCompleted
-		if ctx.Err() != nil {
+		switch {
+		case ctx.Err() != nil:
 			status = StatusStopped
+		case pages == 0:
+			// Could not fetch even the seed (unreachable, or out-of-scope seed).
+			status = StatusError
 		}
 		_ = c.store.SetCrawlStatus(bg, taskID, status)
 		c.emit(Update{Kind: "status", TaskID: taskID, Status: status, Pages: pages, Found: found})
@@ -104,7 +108,17 @@ func (c *Crawler) runCrawl(ctx, bg context.Context, taskID string, cfg Config) (
 	if err != nil || (seed.Scheme != "http" && seed.Scheme != "https") || seed.Host == "" {
 		return 0, 0
 	}
+	// Canonicalize an empty path to "/" so the homepage and a self-link to "/"
+	// (which extractLinks resolves to ".../") dedup to one URL instead of two.
+	if seed.Path == "" {
+		seed.Path = "/"
+	}
 	seedHost := strings.ToLower(seed.Hostname())
+	// The seed must obey the same scope rule applied to discovered links; an
+	// out-of-scope seed is never fetched.
+	if !c.allowed(seed.String(), seedHost) {
+		return 0, 0
+	}
 	maxPages := cfg.MaxPages
 	if maxPages <= 0 {
 		maxPages = 200
@@ -113,6 +127,7 @@ func (c *Crawler) runCrawl(ctx, bg context.Context, taskID string, cfg Config) (
 	var mu sync.Mutex
 	discovered := map[string]bool{seed.String(): true}
 	pages := 0
+	inFlight := 0 // reserved-but-not-yet-counted fetches, to cap outbound volume
 
 	progress := func() {
 		mu.Lock()
@@ -142,18 +157,21 @@ func (c *Crawler) runCrawl(ctx, bg context.Context, taskID string, cfg Config) (
 					if ctx.Err() != nil {
 						continue
 					}
+					// Reserve a budget slot BEFORE fetching so concurrent in-flight
+					// fetches can't overshoot maxPages in actual outbound requests.
 					mu.Lock()
-					over := pages >= maxPages
+					if pages+inFlight >= maxPages {
+						mu.Unlock()
+						continue
+					}
+					inFlight++
 					mu.Unlock()
-					if over {
-						continue
-					}
+
 					page, links, ok := c.fetch(ctx, cfg, u, depth)
-					if !ok {
-						continue
-					}
+
 					mu.Lock()
-					if pages >= maxPages {
+					inFlight--
+					if !ok {
 						mu.Unlock()
 						continue
 					}
@@ -227,7 +245,10 @@ func (c *Crawler) fetch(ctx context.Context, cfg Config, rawURL string, depth in
 	page := Page{
 		URL: u.String(), Method: "GET", Scheme: u.Scheme, Host: host, Port: port,
 		Path: u.Path, Query: u.RawQuery, StatusCode: resp.StatusCode, ContentType: ct,
-		Length: len(resp.Raw), Depth: depth, DurationMs: resp.DurationMs, RequestRaw: raw, ResponseRaw: resp.Raw,
+		// Body length only, matching the proxy's BodySize semantics (not the full
+		// raw response incl. headers), so the shared history "Length" is consistent.
+		Length: len(body), Depth: depth, InScope: c.inScope(host, u.Path),
+		DurationMs: resp.DurationMs, RequestRaw: raw, ResponseRaw: resp.Raw,
 	}
 	var links []string
 	if strings.Contains(ct, "html") {

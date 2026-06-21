@@ -38,6 +38,7 @@ type Page struct {
 	ContentType string
 	Length      int
 	Depth       int
+	InScope     bool
 	DurationMs  int64
 	RequestRaw  []byte
 	ResponseRaw []byte

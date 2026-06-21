@@ -65,6 +65,9 @@ func (a *API) CreateCrawlTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_seed", "seed must be an absolute http(s) URL")
 		return
 	}
+	if u.Path == "" {
+		u.Path = "/"
+	}
 	task := &models.CrawlTask{
 		ID: storage.NewID(), Name: body.Name, Seed: u.String(), Scheme: u.Scheme, Host: u.Host,
 		MaxDepth: body.MaxDepth, MaxPages: body.MaxPages, Status: crawler.StatusPending,
@@ -126,6 +129,11 @@ func (a *API) StartCrawlTask(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, "get_failed", err)
 		return
 	}
+	// Refuse to crawl a seed the operator has excluded from scope.
+	if u, perr := url.Parse(task.Seed); perr == nil && !a.Scope.InScope(u.Hostname(), u.Path) {
+		writeError(w, http.StatusBadRequest, "out_of_scope", "the seed URL is not in scope")
+		return
+	}
 	cfg := crawler.Config{Seed: task.Seed, MaxDepth: task.MaxDepth, MaxPages: task.MaxPages, HTTPVersion: "HTTP/1.1"}
 	started, err := a.Crawler.Start(task.ID, cfg)
 	if err != nil {
@@ -172,7 +180,7 @@ func (s CrawlerStore) AddPage(ctx context.Context, taskID string, p crawler.Page
 	req := &models.Request{
 		ID: reqID, Timestamp: now, Source: models.SourceCrawler, Method: p.Method,
 		Scheme: p.Scheme, Host: p.Host, Port: p.Port, Path: p.Path, Query: p.Query,
-		URL: p.URL, HTTPVersion: "HTTP/1.1", InScope: true, Raw: p.RequestRaw,
+		URL: p.URL, HTTPVersion: "HTTP/1.1", InScope: p.InScope, Raw: p.RequestRaw,
 	}
 	resp := &models.Response{
 		ID: storage.NewID(), RequestID: reqID, Timestamp: now, StatusCode: p.StatusCode,

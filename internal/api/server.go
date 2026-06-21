@@ -51,8 +51,12 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 	hub := handlers.NewHub()
 	runner := intruder.NewRunner(handlers.IntruderStore{DB: store}, hub.BroadcastIntruder)
 	scan := scanner.NewScanner(handlers.ScannerStore{DB: store}, hub.BroadcastScanner)
-	// Passively scan each page the crawler fetches.
+	// Passively scan each in-scope page the crawler fetches (mirroring the
+	// proxy's scope-gated passive-scan path).
 	scanPage := func(p crawler.Page) {
+		if !p.InScope {
+			return
+		}
 		scan.ScanPassive(context.Background(), scanner.Target{
 			Scheme: p.Scheme, Host: p.Host, Port: p.Port, Method: p.Method, Path: p.Path,
 			Query: p.Query, RequestRaw: p.RequestRaw, ResponseRaw: p.ResponseRaw,
