@@ -35,7 +35,7 @@ web UI.
 | Intruder (all attack types, unthrottled) | ✅ | ⏳ throttled | ✅ |
 | Active + passive scanner | ✅ | ❌ | ✅ |
 | Out-of-band (Collaborator) | ✅ | ❌ | ✅ |
-| AI-assisted triage & payloads | 🔜 | ❌ | ❌ |
+| AI-assisted triage & payloads | ✅ | ❌ | ❌ |
 | CI/CD scan mode + SARIF export | 🔜 | ❌ | ⏳ |
 | Price | **Free** | Free | $$$/yr |
 
@@ -108,8 +108,8 @@ RedTrace is built in phases. See [`docs/phases/`](docs/phases) for detail.
 4. Scanner (passive + active, OWASP Top 10) — ✅ done
 5. Crawler & Sequencer — ✅ done
 6. Out-of-band / Collaborator — ✅ done
-7. AI integration — _next_
-8. CI/CD integration & team collaboration
+7. AI integration — ✅ done
+8. CI/CD integration & team collaboration — _next_
 9. Desktop app (Tauri)
 10. Plugin system
 
@@ -120,7 +120,12 @@ Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Security
 
 RedTrace binds to `127.0.0.1` by default, stores no telemetry, and never phones
-home. For remote access, start it with `--token <secret>` and open the UI with
+home. The optional AI assistant (Phase 7) is the one outbound path, and it is
+opt-in: it is disabled until you configure a provider, it talks only to the
+endpoint you set (use a local model to keep traffic on-network), and it sends
+data only when you explicitly invoke an AI action. An API key entered in the UI
+is stored only in your local database and is never returned over the API. For
+remote access, start it with `--token <secret>` and open the UI with
 that token in the URL once (`http://host:9090/?token=<secret>`); the token is
 saved to the session and sent on every API call and the live-traffic
 WebSocket. To report a vulnerability in RedTrace itself, please follow the

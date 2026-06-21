@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Phase 7: AI integration — an optional, opt-in AI assistant. Configure a
+  provider (Anthropic, or any OpenAI-compatible endpoint including a local model
+  via a base URL) with a model and key in Settings or via `--ai-*` flags; it is
+  disabled until configured and only ever contacts the endpoint you set.
+  Replies stream token-by-token over Server-Sent Events and conversations
+  persist (migration 0008). Adds Send-to-AI actions: explain a request/response
+  from the proxy history, triage a scanner finding, and suggest Intruder
+  payloads for an insertion point, plus a free-form chat. An API key entered in
+  the UI is stored only in the local database and is never returned over the
+  API.
 - Phase 1: project scaffold, CA certificate generation, core MITM proxy,
   SQLite storage layer, REST API + WebSocket traffic stream, and the proxy
   traffic UI.
