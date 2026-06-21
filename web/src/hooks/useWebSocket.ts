@@ -5,6 +5,7 @@ import { useIntruderStore } from '../store/intruderStore';
 import { useScannerStore } from '../store/scannerStore';
 import { useCrawlerStore } from '../store/crawlerStore';
 import { useSequencerStore } from '../store/sequencerStore';
+import { useOOBStore } from '../store/oobStore';
 import { getToken } from '../lib/auth';
 import type { WsFrame } from '../lib/types';
 
@@ -26,7 +27,8 @@ function isWsFrame(value: unknown): value is WsFrame {
       t === 'intruder' ||
       t === 'scanner' ||
       t === 'crawl' ||
-      t === 'sequencer') &&
+      t === 'sequencer' ||
+      t === 'oob') &&
     'data' in value
   );
 }
@@ -42,6 +44,7 @@ export function useWebSocket(): void {
   const applyScanner = useScannerStore((s) => s.applyUpdate);
   const applyCrawler = useCrawlerStore((s) => s.applyUpdate);
   const applySequencer = useSequencerStore((s) => s.applyUpdate);
+  const applyOOB = useOOBStore((s) => s.applyUpdate);
   const setStatus = useConnectionStore((s) => s.setStatus);
 
   // Refs avoid re-running the effect when store actions change identity.
@@ -51,12 +54,14 @@ export function useWebSocket(): void {
   const applyScannerRef = useRef(applyScanner);
   const applyCrawlerRef = useRef(applyCrawler);
   const applySequencerRef = useRef(applySequencer);
+  const applyOOBRef = useRef(applyOOB);
   applyTrafficRef.current = applyTraffic;
   applyInterceptRef.current = applyIntercept;
   applyIntruderRef.current = applyIntruder;
   applyScannerRef.current = applyScanner;
   applyCrawlerRef.current = applyCrawler;
   applySequencerRef.current = applySequencer;
+  applyOOBRef.current = applyOOB;
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -88,8 +93,10 @@ export function useWebSocket(): void {
             applyScannerRef.current(parsed.data);
           } else if (parsed.type === 'crawl') {
             applyCrawlerRef.current(parsed.data);
-          } else {
+          } else if (parsed.type === 'sequencer') {
             applySequencerRef.current(parsed.data);
+          } else {
+            applyOOBRef.current(parsed.data);
           }
         } catch {
           // Ignore malformed frames.

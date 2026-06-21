@@ -154,13 +154,19 @@ export interface SequencerFrame {
   data: SeqUpdate;
 }
 
+export interface OOBFrame {
+  type: 'oob';
+  data: OOBInteractionView;
+}
+
 export type WsFrame =
   | TrafficFrame
   | InterceptFrame
   | IntruderFrame
   | ScannerFrame
   | CrawlFrame
-  | SequencerFrame;
+  | SequencerFrame
+  | OOBFrame;
 
 // Error envelope returned by the backend on failure.
 export interface ApiErrorEnvelope {
@@ -585,4 +591,40 @@ export interface SeqUpdate {
   status?: SeqStatus;
   collected: number;
   target: number;
+}
+
+// --- OOB / Collaborator ---
+
+export type OOBProtocol = 'dns' | 'http' | 'https';
+
+export interface OOBConfig {
+  enabled: boolean;
+  domain: string;
+  publicIp: string;
+  httpAddr: string;
+  dnsAddr: string;
+}
+
+export interface OOBPayloadView {
+  token: string;
+  host: string;
+  httpUrl: string;
+  httpsUrl: string;
+  interactions: number;
+  createdAt: string;
+}
+
+export interface OOBInteractionView {
+  id: string;
+  token?: string;
+  protocol: OOBProtocol;
+  sourceIp: string;
+  query: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface OOBInteractionDetail {
+  interaction: OOBInteractionView;
+  raw: string;
 }

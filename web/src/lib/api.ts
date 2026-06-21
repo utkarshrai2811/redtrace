@@ -15,6 +15,10 @@ import type {
   IntruderResultDetail,
   AttackView,
   MatchReplaceRule,
+  OOBConfig,
+  OOBInteractionDetail,
+  OOBInteractionView,
+  OOBPayloadView,
   ProxySettings,
   RequestDetail,
   RequestFilters,
@@ -453,6 +457,33 @@ export const api = {
     return request<{ stopped: boolean }>(`/api/sequencer/tasks/${encodeURIComponent(id)}/stop`, {
       method: 'POST',
     });
+  },
+
+  // --- OOB / Collaborator (interaction raw field is base64) ---
+
+  oobConfig(): Promise<OOBConfig> {
+    return request<OOBConfig>('/api/oob/config');
+  },
+
+  oobPayloads(): Promise<OOBPayloadView[]> {
+    return request<OOBPayloadView[]>('/api/oob/payloads');
+  },
+
+  generateOOBPayload(): Promise<OOBPayloadView> {
+    return request<OOBPayloadView>('/api/oob/payloads', { method: 'POST' });
+  },
+
+  oobInteractions(token?: string): Promise<OOBInteractionView[]> {
+    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+    return request<OOBInteractionView[]>(`/api/oob/interactions${query}`);
+  },
+
+  oobInteraction(id: string): Promise<OOBInteractionDetail> {
+    return request<OOBInteractionDetail>(`/api/oob/interactions/${encodeURIComponent(id)}`);
+  },
+
+  clearOOBInteractions(): Promise<void> {
+    return request<void>('/api/oob/interactions', { method: 'DELETE' });
   },
 
   // --- Send to Repeater / Intruder / Scanner / Crawler / Sequencer (from the proxy) ---

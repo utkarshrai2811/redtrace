@@ -68,6 +68,11 @@ const ENABLED: NavItem[] = [
     icon: <Icon d="M3 3h18v18H3zM8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01" />,
   },
   {
+    label: 'Collaborator',
+    to: '/oob',
+    icon: <Icon d="M5 12a7 7 0 1014 0 7 7 0 00-14 0zM12 2v3M12 19v3M2 12h3M19 12h3M9 12h6M12 9v6" />,
+  },
+  {
     label: 'Decoder',
     to: '/decoder',
     icon: <Icon d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
@@ -86,7 +91,7 @@ const ENABLED: NavItem[] = [
   },
 ];
 
-const DISABLED = ['OOB', 'AI'];
+const DISABLED = ['AI'];
 
 function ConnectionDot() {
   const status = useConnectionStore((s) => s.status);
