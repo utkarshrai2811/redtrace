@@ -115,7 +115,7 @@ export function OOBPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Collaborator" subtitle="Out-of-band interaction capture (DNS / HTTP / HTTPS)" />
+      <PageHeader title="Collaborator" subtitle="Out-of-band interaction capture (DNS / HTTP)" />
       {error ? (
         <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-red-400">
           {error}

@@ -64,7 +64,7 @@ export function InteractionsTable({ interactions, selectedId, onSelect }: Intera
   if (interactions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center py-10 text-xs text-zinc-400">
-        No interactions yet. Plant a generated payload and any DNS/HTTP/HTTPS callback to it appears
+        No interactions yet. Plant a generated payload and any DNS/HTTP callback to it appears
         here live.
       </div>
     );
@@ -74,6 +74,7 @@ export function InteractionsTable({ interactions, selectedId, onSelect }: Intera
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       <table className="w-full table-fixed border-collapse text-xs">
+        <caption className="sr-only">Out-of-band interactions</caption>
         <colgroup>
           <col className="w-16" />
           <col className="w-40" />

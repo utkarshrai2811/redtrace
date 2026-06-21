@@ -47,7 +47,7 @@ export function PayloadGenerator() {
           Generate payload
         </Button>
         <span className="text-2xs text-zinc-500">
-          Mints a unique host that captures DNS/HTTP/HTTPS callbacks.
+          Mints a unique host that captures DNS/HTTP callbacks.
         </span>
       </div>
 
@@ -60,7 +60,6 @@ export function PayloadGenerator() {
           </div>
           <PayloadLine label="Host" value={latest.host} />
           <PayloadLine label="HTTP" value={latest.httpUrl} />
-          <PayloadLine label="HTTPS" value={latest.httpsUrl} />
         </div>
       )}
     </div>

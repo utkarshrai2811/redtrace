@@ -595,7 +595,7 @@ export interface SeqUpdate {
 
 // --- OOB / Collaborator ---
 
-export type OOBProtocol = 'dns' | 'http' | 'https';
+export type OOBProtocol = 'dns' | 'http';
 
 export interface OOBConfig {
   enabled: boolean;
@@ -609,7 +609,6 @@ export interface OOBPayloadView {
   token: string;
   host: string;
   httpUrl: string;
-  httpsUrl: string;
   interactions: number;
   createdAt: string;
 }

@@ -19,7 +19,23 @@ interface OOBState {
   applyUpdate: (i: OOBInteractionView) => void;
 }
 
-export const useOOBStore = create<OOBState>((set) => ({
+// mergeInteractions folds a freshly-fetched snapshot together with whatever is
+// already in the store, deduped by id and kept newest-first. fetchAll must not
+// wholesale-replace the list: a live WS interaction can arrive after the server
+// serialized its snapshot but before the GET resolves, and a plain replace would
+// drop it from the table (it stays in the DB) until the next reload.
+function mergeInteractions(
+  fetched: OOBInteractionView[],
+  existing: OOBInteractionView[],
+): OOBInteractionView[] {
+  const byId = new Map<string, OOBInteractionView>();
+  for (const i of fetched) byId.set(i.id, i);
+  for (const i of existing) if (!byId.has(i.id)) byId.set(i.id, i);
+  // createdAt is an ISO-8601 string, so lexical compare orders it correctly.
+  return [...byId.values()].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export const useOOBStore = create<OOBState>((set, get) => ({
   config: null,
   payloads: [],
   interactions: [],
@@ -44,7 +60,8 @@ export const useOOBStore = create<OOBState>((set) => ({
         api.oobPayloads(),
         api.oobInteractions(),
       ]);
-      set({ loading: false, config, payloads, interactions });
+      // Merge rather than replace so a live frame received mid-fetch survives.
+      set({ loading: false, config, payloads, interactions: mergeInteractions(interactions, get().interactions) });
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load collaborator state';
       set({ loading: false, error: message });
