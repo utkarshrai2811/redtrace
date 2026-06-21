@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,6 +47,47 @@ func TestAnalyzeConstantPrefix(t *testing.T) {
 	}
 	if r.EffectiveBits <= 0 {
 		t.Errorf("effective bits = %v, want > 0", r.EffectiveBits)
+	}
+}
+
+func TestBitsPerCharIgnoresLengthOutlier(t *testing.T) {
+	// 16 two-hex-char tokens (~4 bits/char), then one long padded outlier.
+	base := make([]string, 0, 16)
+	for i := 0; i < 16; i++ {
+		base = append(base, fmt.Sprintf("%x%x", i%16, (i*7)%16))
+	}
+	withOutlier := append(append([]string{}, base...), "ffffffffffffffffffff")
+	r := Analyze(withOutlier)
+	// The outlier's tail positions must not deflate bits/char (the bug divided by
+	// MaxLength, dragging ~4 bits/char down to under 1).
+	if r.BitsPerChar < 2.0 {
+		t.Errorf("BitsPerChar = %.3f, want >= 2.0 (not deflated by a length outlier)", r.BitsPerChar)
+	}
+}
+
+func TestNoFalseConstantNoteOnLengthOutlier(t *testing.T) {
+	// Distinct 2-hex tokens plus one long outlier. The outlier's tail positions
+	// have only one sample, so they must NOT be reported as "constant across all
+	// tokens".
+	tokens := make([]string, 0, 17)
+	for i := 0; i < 16; i++ {
+		tokens = append(tokens, fmt.Sprintf("%x%x", i%16, (i*7)%16))
+	}
+	tokens = append(tokens, "deadbeefdeadbeef")
+	r := Analyze(tokens)
+	for _, n := range r.Notes {
+		if strings.Contains(n, "constant across all tokens") {
+			t.Errorf("unexpected false constant-position note: %q", n)
+		}
+	}
+}
+
+func TestSingleTokenNoConstantNote(t *testing.T) {
+	r := Analyze([]string{"abcdef0123456789"})
+	for _, n := range r.Notes {
+		if strings.Contains(n, "constant across all tokens") {
+			t.Errorf("single-token sample should not claim constant positions: %q", n)
+		}
 	}
 }
 
@@ -105,5 +147,37 @@ func TestSequencerCapture(t *testing.T) {
 	}
 	if collected < 30 {
 		t.Errorf("collected = %d, want >= 30", collected)
+	}
+}
+
+func TestSequencerErrorOnNoTokens(t *testing.T) {
+	// The server never sets the cookie being captured, so extraction always
+	// misses and the run must end as 'error', not green 'completed'.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+
+	store := &fakeSeqStore{done: make(chan struct{})}
+	sq := NewSequencer(store, nil)
+	cfg := Config{
+		Scheme: "http", Host: u.Host, HTTPVersion: "HTTP/1.1", Source: "cookie", Selector: "sid", Target: 5,
+		Template: []byte("GET / HTTP/1.1\r\nHost: " + u.Host + "\r\n\r\n"),
+	}
+	started, err := sq.Start("t1", cfg)
+	if err != nil || !started {
+		t.Fatalf("Start = (%v, %v)", started, err)
+	}
+	select {
+	case <-store.done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("capture did not finish")
+	}
+	store.mu.Lock()
+	status := store.status
+	store.mu.Unlock()
+	if status != StatusError {
+		t.Errorf("status = %q, want error (no tokens collected)", status)
 	}
 }

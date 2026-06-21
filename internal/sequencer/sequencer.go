@@ -60,6 +60,7 @@ func Analyze(tokens []string) Report {
 	// Positional Shannon entropy: at each character position, the entropy of the
 	// distribution of characters across all tokens long enough to have one.
 	r.PositionEntropy = make([]float64, r.MaxLength)
+	posCount := make([]int, r.MaxLength) // tokens that actually reach each position
 	for pos := 0; pos < r.MaxLength; pos++ {
 		counts := make(map[byte]int)
 		n := 0
@@ -69,15 +70,23 @@ func Analyze(tokens []string) Report {
 				n++
 			}
 		}
+		posCount[pos] = n
 		r.PositionEntropy[pos] = shannon(counts, n)
 		r.EffectiveBits += r.PositionEntropy[pos]
 	}
-	if r.MaxLength > 0 {
-		r.BitsPerChar = r.EffectiveBits / float64(r.MaxLength)
+	// Average entropy over the positions present in every token (0..MinLength-1),
+	// so a single longer-token outlier (whose tail positions have a tiny sample)
+	// can't deflate the per-character figure.
+	if r.MinLength > 0 {
+		var coreBits float64
+		for i := 0; i < r.MinLength; i++ {
+			coreBits += r.PositionEntropy[i]
+		}
+		r.BitsPerChar = coreBits / float64(r.MinLength)
 	}
 
 	r.Quality = quality(r.EffectiveBits)
-	r.Notes = notes(r)
+	r.Notes = notes(r, posCount)
 	return r
 }
 
@@ -107,7 +116,7 @@ func quality(bits float64) string {
 	}
 }
 
-func notes(r Report) []string {
+func notes(r Report, posCount []int) []string {
 	var out []string
 	if r.SampleCount < 100 {
 		out = append(out, fmt.Sprintf("Small sample (%d tokens); collect more for a reliable estimate.", r.SampleCount))
@@ -118,14 +127,19 @@ func notes(r Report) []string {
 	if r.MinLength != r.MaxLength {
 		out = append(out, "Tokens vary in length, which can indicate structure rather than raw randomness.")
 	}
-	constant := 0
-	for _, h := range r.PositionEntropy {
-		if h == 0 {
-			constant++
+	// A position is only "constant across all tokens" if every token reaches it
+	// (full coverage) and there are at least two tokens to compare; a sparse tail
+	// position present in one outlier-length token is not a fixed prefix.
+	if r.SampleCount >= 2 {
+		constant := 0
+		for i, h := range r.PositionEntropy {
+			if h == 0 && posCount[i] == r.SampleCount {
+				constant++
+			}
 		}
-	}
-	if constant > 0 {
-		out = append(out, fmt.Sprintf("%d character position(s) are constant across all tokens (fixed prefix/format).", constant))
+		if constant > 0 {
+			out = append(out, fmt.Sprintf("%d character position(s) are constant across all tokens (fixed prefix/format).", constant))
+		}
 	}
 	out = append(out, "Effective entropy is an indicative estimate (positional Shannon entropy), not a FIPS-140 result.")
 	return out

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/utkarshrai2811/redtrace/internal/sequencer"
@@ -192,6 +193,12 @@ func (a *API) StartSequencerTask(w http.ResponseWriter, r *http.Request) {
 	if task.Selector == "" {
 		writeError(w, http.StatusBadRequest, "invalid_task", fmt.Sprintf("no %s selector for token extraction", task.Source))
 		return
+	}
+	if task.Source == "regex" {
+		if _, err := regexp.Compile(task.Selector); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_task", "selector is not a valid regular expression: "+err.Error())
+			return
+		}
 	}
 	cfg := sequencer.Config{
 		Scheme: task.Scheme, Host: task.Host, Template: task.Template, HTTPVersion: task.HTTPVersion,

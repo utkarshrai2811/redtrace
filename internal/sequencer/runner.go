@@ -116,8 +116,12 @@ func (s *Sequencer) Start(taskID string, cfg Config) (bool, error) {
 		tokens := s.runCapture(ctx, bg, taskID, cfg)
 
 		status := StatusCompleted
-		if ctx.Err() != nil {
+		switch {
+		case ctx.Err() != nil:
 			status = StatusStopped
+		case len(tokens) == 0:
+			// Nothing collected (dead target, wrong cookie name, or bad regex).
+			status = StatusError
 		}
 		report, _ := json.Marshal(Analyze(tokens))
 		_ = s.store.SetSequencerResult(bg, taskID, status, report)
@@ -184,14 +188,21 @@ func (s *Sequencer) runCapture(ctx, bg context.Context, taskID string, cfg Confi
 				}
 				tok, ok := extractToken(cfg.Source, cfg.Selector, re, resp.Raw)
 				mu.Lock()
-				if ok && tok != "" {
+				switch {
+				case ok && tok != "" && len(tokens) < target:
+					// Re-check the cap inside the same critical section as the append
+					// so collected never overshoots target.
 					tokens = append(tokens, tok)
 					n := len(tokens)
 					mu.Unlock()
 					if n%progressEvery == 0 {
 						persist()
 					}
-				} else {
+				case ok && tok != "":
+					// Already at target; this extra sample is dropped, worker stops.
+					mu.Unlock()
+					return
+				default:
 					fails++
 					mu.Unlock()
 				}
