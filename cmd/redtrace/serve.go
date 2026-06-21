@@ -14,6 +14,7 @@ import (
 
 	"github.com/utkarshrai2811/redtrace/internal/api"
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
+	"github.com/utkarshrai2811/redtrace/internal/oob"
 	"github.com/utkarshrai2811/redtrace/internal/proxy"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
@@ -33,10 +34,18 @@ func init() {
 	f.String("api-listen", "", "API + UI listen address (default: 127.0.0.1:9090)")
 	f.String("upstream-proxy", "", "upstream proxy URL for chaining (e.g. http://127.0.0.1:8081)")
 	f.String("token", "", "shared auth token for the API/UI (empty disables auth)")
+	f.String("oob-domain", "", "OOB/Collaborator domain; setting it starts the OOB listeners (e.g. oob.example.com)")
+	f.String("oob-public-ip", "", "IPv4 the OOB DNS listener answers with (your public IP)")
+	f.String("oob-http-listen", "", "OOB HTTP listener address (default 0.0.0.0:8888)")
+	f.String("oob-dns-listen", "", "OOB DNS listener address (default 0.0.0.0:5353)")
 	_ = viper.BindPFlag("proxy.listen", f.Lookup("proxy-listen"))
 	_ = viper.BindPFlag("api.listen", f.Lookup("api-listen"))
 	_ = viper.BindPFlag("upstream.proxy", f.Lookup("upstream-proxy"))
 	_ = viper.BindPFlag("auth.token", f.Lookup("token"))
+	_ = viper.BindPFlag("oob.domain", f.Lookup("oob-domain"))
+	_ = viper.BindPFlag("oob.public-ip", f.Lookup("oob-public-ip"))
+	_ = viper.BindPFlag("oob.http-listen", f.Lookup("oob-http-listen"))
+	_ = viper.BindPFlag("oob.dns-listen", f.Lookup("oob-dns-listen"))
 }
 
 func runServe(cmd *cobra.Command, _ []string) error {
@@ -75,6 +84,10 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		Token:      cfg.Token,
 		Version:    version,
 		ProxyInfo:  handlers.ProxyInfo{ProxyAddr: cfg.ProxyListen, UpstreamProxy: cfg.UpstreamProxy},
+		OOB: oob.Config{
+			Domain: cfg.OOBDomain, PublicIP: cfg.OOBPublicIP,
+			HTTPAddr: cfg.OOBHTTPListen, DNSAddr: cfg.OOBDNSListen,
+		},
 	}, db, sc, rules, interceptor, authority, logger)
 	if err != nil {
 		return fmt.Errorf("init api: %w", err)
@@ -90,6 +103,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return px.Run(ctx) })
 	g.Go(func() error { return srv.Run(ctx) })
+	g.Go(func() error { return srv.RunOOB(ctx) })
 	return g.Wait()
 }
 

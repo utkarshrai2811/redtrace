@@ -18,6 +18,10 @@ type Config struct {
 	UpstreamProxy string
 	Token         string
 	LogLevel      string
+	OOBDomain     string
+	OOBPublicIP   string
+	OOBHTTPListen string
+	OOBDNSListen  string
 }
 
 func loadConfig() Config {
@@ -34,6 +38,10 @@ func loadConfig() Config {
 		UpstreamProxy: viper.GetString("upstream.proxy"),
 		Token:         viper.GetString("auth.token"),
 		LogLevel:      viper.GetString("log.level"),
+		OOBDomain:     viper.GetString("oob.domain"),
+		OOBPublicIP:   viper.GetString("oob.public-ip"),
+		OOBHTTPListen: firstNonEmpty(viper.GetString("oob.http-listen"), "0.0.0.0:8888"),
+		OOBDNSListen:  firstNonEmpty(viper.GetString("oob.dns-listen"), "0.0.0.0:5353"),
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
+	"github.com/utkarshrai2811/redtrace/internal/oob"
 	"github.com/utkarshrai2811/redtrace/internal/scanner"
 	"github.com/utkarshrai2811/redtrace/internal/sequencer"
 	"github.com/utkarshrai2811/redtrace/internal/storage"
@@ -144,6 +145,14 @@ func (h *Hub) BroadcastCrawl(update crawler.Update) {
 // BroadcastSequencer pushes a Sequencer capture progress update.
 func (h *Hub) BroadcastSequencer(update sequencer.Update) {
 	h.Broadcast("sequencer", update)
+}
+
+// BroadcastOOB pushes a captured out-of-band interaction (without raw bytes).
+func (h *Hub) BroadcastOOB(i oob.Interaction) {
+	h.Broadcast("oob", oobInteractionView{
+		ID: i.ID, Token: i.Token, Protocol: i.Protocol, SourceIP: i.SourceIP,
+		Query: i.Query, Detail: i.Detail, CreatedAt: i.CreatedAt,
+	})
 }
 
 func (h *Hub) remove(c *wsClient) {

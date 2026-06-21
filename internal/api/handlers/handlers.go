@@ -8,6 +8,7 @@ import (
 
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
+	"github.com/utkarshrai2811/redtrace/internal/oob"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
@@ -36,6 +37,7 @@ type API struct {
 	Scanner     *scanner.Scanner
 	Crawler     *crawler.Crawler
 	Sequencer   *sequencer.Sequencer
+	OOB         *oob.Server
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger

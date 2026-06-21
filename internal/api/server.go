@@ -14,6 +14,7 @@ import (
 	"github.com/utkarshrai2811/redtrace/internal/api/handlers"
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
 	"github.com/utkarshrai2811/redtrace/internal/intruder"
+	"github.com/utkarshrai2811/redtrace/internal/oob"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/cert"
 	"github.com/utkarshrai2811/redtrace/internal/proxy/intercept"
 	"github.com/utkarshrai2811/redtrace/internal/repeater"
@@ -30,6 +31,7 @@ type Config struct {
 	Token      string // optional shared auth token ("" disables auth)
 	Version    string
 	ProxyInfo  handlers.ProxyInfo
+	OOB        oob.Config
 }
 
 // Server serves the REST API, WebSocket, and embedded UI.
@@ -64,6 +66,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 	}
 	crawl := crawler.NewCrawler(handlers.CrawlerStore{DB: store}, hub.BroadcastCrawl, sc.InScope, scanPage)
 	seq := sequencer.NewSequencer(handlers.SequencerStore{DB: store}, hub.BroadcastSequencer)
+	oobSrv := oob.New(cfg.OOB, handlers.OOBStore{DB: store}, hub.BroadcastOOB, logger)
 	a := &handlers.API{
 		Store:       store,
 		Scope:       sc,
@@ -76,6 +79,7 @@ func New(cfg Config, store *storage.DB, sc *scope.Scope, rules *intercept.RuleSe
 		Scanner:     scan,
 		Crawler:     crawl,
 		Sequencer:   seq,
+		OOB:         oobSrv,
 		Version:     cfg.Version,
 		Proxy:       cfg.ProxyInfo,
 		Log:         logger,
@@ -106,6 +110,12 @@ func (s *Server) PublishExchange(summary storage.RequestSummary) {
 // proxy.Proxy.OnExchangeStored.
 func (s *Server) ScanExchange(ex *models.Exchange) {
 	s.api.ScanExchange(ex)
+}
+
+// RunOOB runs the out-of-band interaction listeners until ctx is cancelled (a
+// no-op when OOB is not configured). Run it as its own errgroup task.
+func (s *Server) RunOOB(ctx context.Context) error {
+	return s.api.OOB.Run(ctx)
 }
 
 // Run binds the configured address and serves until ctx is cancelled.

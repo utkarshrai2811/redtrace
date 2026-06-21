@@ -102,6 +102,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/repeater/tabs/{id}", a.DeleteRepeaterTab)
 	mux.HandleFunc("POST /api/repeater/tabs/{id}/send", a.SendRepeaterTab)
 
+	// Out-of-band (Collaborator)
+	mux.HandleFunc("GET /api/oob/config", a.OOBConfig)
+	mux.HandleFunc("GET /api/oob/payloads", a.ListOOBPayloads)
+	mux.HandleFunc("POST /api/oob/payloads", a.GenerateOOBPayload)
+	mux.HandleFunc("GET /api/oob/interactions", a.ListOOBInteractions)
+	mux.HandleFunc("DELETE /api/oob/interactions", a.ClearOOBInteractions)
+	mux.HandleFunc("GET /api/oob/interactions/{id}", a.GetOOBInteraction)
+
 	// Live traffic stream
 	mux.HandleFunc("GET /ws/traffic", a.Hub.ServeWS)
 
