@@ -50,6 +50,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactions are viewable only through the authenticated API/UI.
 
 ### Fixed
+- Post-Phase-6 (Out-of-band / Collaborator) review pass:
+  - **Listeners:** a DNS query or HTTP request is now recorded only when the
+    queried name/Host is under the configured OOB domain, and the DNS responder
+    answers only those names. An unauthenticated source can no longer fill the
+    database with uncorrelated callbacks or use the listener as an open DNS
+    responder/reflector — off-domain and root/empty-name queries are dropped
+    (no row, no reply).
+  - **Capture:** an oversized HTTP callback body is truncated to the 64 KiB cap
+    instead of dropping the entire raw capture, with a headers-only fallback so a
+    callback is never stored empty.
+  - **API:** an OOB payload storage failure now returns a generic 500 rather than
+    a 400 `oob_disabled` carrying the raw database error.
+  - **Robustness:** token/id generation aborts on a `crypto/rand` failure instead
+    of emitting a colliding empty primary key; the OOB listen addresses are
+    validated at startup and a missing/invalid public IP is warned about. The
+    unused `note` column and an unused DNS-parse return value were dropped.
+  - **HTTPS:** the advertised HTTPS payload URL/protocol is removed across the
+    stack — no TLS listener served it, so a copied HTTPS payload captured nothing.
+  - **UI:** the interactions list merges on reload so a live callback arriving
+    mid-fetch is no longer dropped from the table; the interactions table now
+    has an accessible caption.
 - Post-Phase-5 (Crawler & Sequencer) review pass:
   - **Crawler:** the seed URL now obeys the configured scope (an out-of-scope
     seed is refused with 400 and never fetched or scanned), each stored page
