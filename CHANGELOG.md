@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Send-to-Sequencer actions from proxy history, and persist (migration 0006).
 
 ### Fixed
+- Post-Phase-5 (Crawler & Sequencer) review pass:
+  - **Crawler:** the seed URL now obeys the configured scope (an out-of-scope
+    seed is refused with 400 and never fetched or scanned), each stored page
+    records its true in-scope flag and body-only length (consistent with proxy
+    history), a bare-host seed no longer fetches the homepage twice, the page
+    budget now caps outbound requests (not just stored pages), and a crawl that
+    fetched nothing ends as `error`.
+  - **Sequencer:** bits/char is computed over full-coverage character positions
+    so a single long-token outlier no longer deflates it; the "constant position"
+    note fires only for positions present in every token; an invalid regex
+    selector is rejected at start; a capture that collected nothing ends as
+    `error`; and the collected count can no longer briefly exceed the target.
+  - **UI:** a background crawl's list counters no longer flicker to 0/0 on each
+    fetched page; a bad new-crawl seed shows an inline error instead of replacing
+    the crawl list; and a completing capture refreshes its report in place rather
+    than flashing a full-pane spinner.
 - Post-Phase-4 (Scanner) review pass:
   - **Passive checks:** cookie Secure/HttpOnly/SameSite detection now parses the
     attribute list instead of substring-matching the whole Set-Cookie line (a
