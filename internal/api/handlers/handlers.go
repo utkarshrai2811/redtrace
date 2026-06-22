@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/utkarshrai2811/redtrace/internal/ai"
 	"github.com/utkarshrai2811/redtrace/internal/crawler"
@@ -43,6 +44,10 @@ type API struct {
 	Version     string
 	Proxy       ProxyInfo
 	Log         *slog.Logger
+
+	// aiStreams serializes AI generation per conversation id (one active stream
+	// each) so concurrent requests cannot interleave and duplicate a reply.
+	aiStreams sync.Map
 }
 
 // errorBody is the consistent error envelope: {"error":{"code","message"}}.

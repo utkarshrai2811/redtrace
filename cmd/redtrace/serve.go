@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -137,19 +138,31 @@ func runServe(cmd *cobra.Command, _ []string) error {
 // disk here — only an explicit Settings save persists it.
 func resolveAIConfig(db *storage.DB, cfg Config) ai.Config {
 	out := ai.Config{Provider: cfg.AIProvider, Model: cfg.AIModel, APIKey: cfg.AIAPIKey, BaseURL: cfg.AIBaseURL}
-	if s, ok, err := db.LoadAISettings(context.Background()); err == nil && ok {
-		if out.Provider == "" {
-			out.Provider = s.Provider
-		}
-		if out.Model == "" {
-			out.Model = s.Model
-		}
-		if out.BaseURL == "" {
-			out.BaseURL = s.BaseURL
-		}
-		if out.APIKey == "" {
-			out.APIKey = s.APIKey
-		}
+	s, ok, err := db.LoadAISettings(context.Background())
+	if err != nil || !ok {
+		return out
+	}
+	// Inherit persisted fields only when they belong to the provider that will be
+	// in effect. Otherwise a flag like `--ai-provider anthropic` could inherit a
+	// previously-saved OpenAI base URL/model and send the Anthropic key there.
+	effective := out.Provider
+	if effective == "" {
+		effective = s.Provider
+	}
+	if !strings.EqualFold(effective, s.Provider) {
+		return out
+	}
+	if out.Provider == "" {
+		out.Provider = s.Provider
+	}
+	if out.Model == "" {
+		out.Model = s.Model
+	}
+	if out.BaseURL == "" {
+		out.BaseURL = s.BaseURL
+	}
+	if out.APIKey == "" {
+		out.APIKey = s.APIKey
 	}
 	return out
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -82,15 +83,26 @@ func (a *API) UpdateAIConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cur := a.AI.Config()
-	next := ai.Config{Provider: req.Provider, Model: req.Model, BaseURL: req.BaseURL, APIKey: cur.APIKey, MaxTokens: cur.MaxTokens}
+	next := ai.Config{Provider: req.Provider, Model: req.Model, BaseURL: req.BaseURL, APIKey: cur.APIKey}
 	if req.APIKey != nil {
 		next.APIKey = *req.APIKey
 	}
 	a.AI.Configure(next)
 
+	// Persist the key only when the request actually carried one. On a "keep"
+	// save (no apiKey field) we must NOT write the live in-memory key to disk —
+	// it may be a flag/env key that the operator deliberately kept off disk — so
+	// we re-persist whatever key was already stored (if any).
 	resolved := a.AI.Config()
+	persistKey := resolved.APIKey
+	if req.APIKey == nil {
+		persistKey = ""
+		if s, ok, _ := a.Store.LoadAISettings(r.Context()); ok {
+			persistKey = s.APIKey
+		}
+	}
 	if err := a.Store.SaveAISettings(r.Context(), models.AISettings{
-		Provider: resolved.Provider, Model: resolved.Model, BaseURL: resolved.BaseURL, APIKey: resolved.APIKey,
+		Provider: resolved.Provider, Model: resolved.Model, BaseURL: resolved.BaseURL, APIKey: persistKey,
 	}); err != nil {
 		a.serverError(w, "save_failed", err)
 		return
@@ -184,7 +196,12 @@ func (a *API) GetAIConversation(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAIConversation handles DELETE /api/ai/conversations/{id}.
 func (a *API) DeleteAIConversation(w http.ResponseWriter, r *http.Request) {
-	if err := a.Store.DeleteAIConversation(r.Context(), r.PathValue("id")); err != nil {
+	err := a.Store.DeleteAIConversation(r.Context(), r.PathValue("id"))
+	if errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "no such conversation")
+		return
+	}
+	if err != nil {
 		a.serverError(w, "delete_failed", err)
 		return
 	}
@@ -226,12 +243,20 @@ func (a *API) StreamAIMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize streaming per conversation so two concurrent requests (e.g. two
+	// browser tabs) cannot interleave reads/appends and duplicate the reply.
+	if _, busy := a.aiStreams.LoadOrStore(id, struct{}{}); busy {
+		writeError(w, http.StatusConflict, "stream_in_progress", "a reply is already streaming for this conversation")
+		return
+	}
+	defer a.aiStreams.Delete(id)
+
+	// An empty body (Content-Length 0, "{}", or a chunked empty body) means
+	// "generate a reply for the current messages"; tolerate the resulting EOF.
 	var req streamMessageRequest
-	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", "could not parse request body")
-			return
-		}
+	if err := decodeJSON(r, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "could not parse request body")
+		return
 	}
 	if content := strings.TrimSpace(req.Content); content != "" {
 		title := ""
@@ -283,21 +308,28 @@ func (a *API) StreamAIMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sseEvent(w, fl, "error", map[string]string{"message": cleanProviderError(genErr)})
 		return
 	}
-	saved := a.persistAssistant(r.Context(), id, full)
+	saved, ok := a.persistAssistant(r.Context(), id, full)
+	if strings.TrimSpace(full) != "" && !ok {
+		// The reply generated but could not be saved; report it rather than
+		// emitting a 'done' that claims a message the next reload won't have.
+		_ = sseEvent(w, fl, "error", map[string]string{"message": "reply generated but could not be saved"})
+		return
+	}
 	_ = sseEvent(w, fl, "done", saved)
 }
 
 // persistAssistant stores a (possibly partial) assistant reply when non-empty
-// and returns its view for the terminal SSE frame.
-func (a *API) persistAssistant(ctx context.Context, conversationID, content string) aiMessageView {
+// and returns its view and whether it was actually saved.
+func (a *API) persistAssistant(ctx context.Context, conversationID, content string) (aiMessageView, bool) {
 	if strings.TrimSpace(content) == "" {
-		return aiMessageView{}
+		return aiMessageView{}, true
 	}
 	m := &models.AIMessage{ID: storage.NewID(), ConversationID: conversationID, Role: ai.RoleAssistant, Content: content}
 	if err := a.Store.AppendAIMessage(ctx, m, ""); err != nil {
 		a.Log.Error("persist ai reply", "err", err)
+		return aiMessageView{}, false
 	}
-	return toMessageView(m)
+	return toMessageView(m), true
 }
 
 func sseEvent(w http.ResponseWriter, fl http.Flusher, event string, payload any) error {
@@ -319,8 +351,8 @@ func sseEvent(w http.ResponseWriter, fl http.Flusher, event string, payload any)
 // are surfaced (not hidden behind a generic 500 like storage errors).
 func cleanProviderError(err error) string {
 	msg := strings.ReplaceAll(err.Error(), "\n", " ")
-	if len(msg) > 400 {
-		msg = msg[:400] + "…"
+	if r := []rune(msg); len(r) > 400 {
+		msg = string(r[:400]) + "…"
 	}
 	return msg
 }
