@@ -106,26 +106,46 @@ func (db *DB) GetAIConversation(ctx context.Context, id string) (*models.AIConve
 	return c, nil
 }
 
-// DeleteAIConversation removes a conversation and its messages.
+// DeleteAIConversation removes a conversation and its messages atomically,
+// reporting ErrNotFound when the conversation does not exist (matching the other
+// delete endpoints). The message delete is explicit (rather than relying solely
+// on the ON DELETE CASCADE) so it also cleans up databases migrated before the
+// foreign key existed.
 func (db *DB) DeleteAIConversation(ctx context.Context, id string) error {
-	if _, err := db.sql.ExecContext(ctx, `DELETE FROM ai_messages WHERE conversation_id = ?`, id); err != nil {
-		return fmt.Errorf("delete ai messages: %w", err)
-	}
-	if _, err := db.sql.ExecContext(ctx, `DELETE FROM ai_conversations WHERE id = ?`, id); err != nil {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
 		return fmt.Errorf("delete ai conversation: %w", err)
 	}
-	return nil
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_messages WHERE conversation_id = ?`, id); err != nil {
+		return fmt.Errorf("delete ai messages: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM ai_conversations WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete ai conversation: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
 }
 
-// ClearAIConversations removes every conversation and message.
+// ClearAIConversations removes every conversation and message atomically.
 func (db *DB) ClearAIConversations(ctx context.Context) error {
-	if _, err := db.sql.ExecContext(ctx, `DELETE FROM ai_messages`); err != nil {
-		return fmt.Errorf("clear ai messages: %w", err)
-	}
-	if _, err := db.sql.ExecContext(ctx, `DELETE FROM ai_conversations`); err != nil {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
 		return fmt.Errorf("clear ai conversations: %w", err)
 	}
-	return nil
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_messages`); err != nil {
+		return fmt.Errorf("clear ai messages: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_conversations`); err != nil {
+		return fmt.Errorf("clear ai conversations: %w", err)
+	}
+	return tx.Commit()
 }
 
 // AppendAIMessage stores a message and bumps its conversation's updated_at. The
@@ -135,25 +155,30 @@ func (db *DB) AppendAIMessage(ctx context.Context, m *models.AIMessage, title st
 	if m.CreatedAt.IsZero() {
 		m.CreatedAt = time.Now()
 	}
-	_, err := db.sql.ExecContext(ctx,
-		`INSERT INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.CreatedAt.Format(timeLayout))
+	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("append ai message: %w", err)
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.Role, m.Content, m.CreatedAt.Format(timeLayout)); err != nil {
+		return fmt.Errorf("append ai message: %w", err)
+	}
 	if title != "" {
-		_, err = db.sql.ExecContext(ctx,
+		_, err = tx.ExecContext(ctx,
 			`UPDATE ai_conversations SET updated_at = ?, title = ? WHERE id = ? AND title = ''`,
 			m.CreatedAt.Format(timeLayout), title, m.ConversationID)
 	} else {
-		_, err = db.sql.ExecContext(ctx,
+		_, err = tx.ExecContext(ctx,
 			`UPDATE ai_conversations SET updated_at = ? WHERE id = ?`,
 			m.CreatedAt.Format(timeLayout), m.ConversationID)
 	}
 	if err != nil {
 		return fmt.Errorf("touch ai conversation: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ListAIMessages returns a conversation's messages oldest-first.

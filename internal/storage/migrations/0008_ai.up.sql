@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS ai_conversations (
 
 CREATE TABLE IF NOT EXISTS ai_messages (
     id              TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
     role            TEXT NOT NULL,
     content         TEXT NOT NULL DEFAULT '',
     created_at      TEXT NOT NULL
