@@ -2,11 +2,16 @@ package ai
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 )
+
+// maxSSEFrame bounds a single stream line so a hostile/buggy provider cannot make
+// the reader buffer unboundedly. It is far above any normal token-delta frame.
+const maxSSEFrame = 4 * 1024 * 1024
 
 // readSSE parses a text/event-stream body, invoking handle once per event with
 // the concatenated data payload. handle returns stop=true to end reading early
@@ -14,7 +19,7 @@ import (
 // than "data" are ignored — callers dispatch on the JSON payload itself.
 func readSSE(r io.Reader, handle func(data []byte) (stop bool, err error)) error {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	sc.Buffer(make([]byte, 0, 64*1024), maxSSEFrame)
 	var data strings.Builder
 	dispatch := func() (bool, error) {
 		if data.Len() == 0 {
@@ -44,6 +49,9 @@ func readSSE(r io.Reader, handle func(data []byte) (stop bool, err error)) error
 		}
 	}
 	if err := sc.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return fmt.Errorf("sse: a single stream frame exceeded the %d-byte limit", maxSSEFrame)
+		}
 		return err
 	}
 	// Flush a final event that wasn't terminated by a blank line.

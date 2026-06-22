@@ -9,11 +9,13 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -43,8 +45,10 @@ const (
 	openAIBaseURL         = "https://api.openai.com/v1"
 	defaultAnthropicModel = "claude-sonnet-4-6"
 	defaultOpenAIModel    = "gpt-4o-mini"
-	defaultMaxTokens      = 2048
-	maxMessageChars       = 24000 // per-message cap so a huge paste can't blow the context
+	maxTokens             = 4096
+	maxMessageChars       = 24000  // per-message cap so a huge paste can't blow the context
+	maxTotalChars         = 192000 // aggregate cap: keep only the most recent turns within this budget
+	idleTimeout           = 120 * time.Second
 )
 
 // ErrNotConfigured is returned when an AI action is attempted before the
@@ -53,11 +57,10 @@ var ErrNotConfigured = errors.New("ai is not configured")
 
 // Config is the AI provider configuration.
 type Config struct {
-	Provider  string
-	Model     string
-	APIKey    string
-	BaseURL   string
-	MaxTokens int
+	Provider string
+	Model    string
+	APIKey   string
+	BaseURL  string
 }
 
 // Status is the non-secret configuration surfaced to the UI — it never includes
@@ -125,9 +128,6 @@ func normalize(cfg Config) Config {
 			cfg.Model = defaultAnthropicModel
 		}
 	}
-	if cfg.MaxTokens <= 0 {
-		cfg.MaxTokens = defaultMaxTokens
-	}
 	return cfg
 }
 
@@ -191,20 +191,58 @@ func (s *Service) Stream(ctx context.Context, kind string, msgs []Message, onDel
 	}
 	system := systemPrompt(kind)
 	msgs = truncateMessages(msgs)
-	if cfg.Provider == ProviderOpenAI {
-		return s.streamOpenAI(ctx, cfg, system, msgs, onDelta)
+
+	// Idle watchdog: if the provider sends no data for idleTimeout (e.g. a wedged
+	// upstream that returned headers then stalled), cancel the request so the
+	// handler goroutine and connection are not pinned indefinitely. The timer is
+	// reset on every delta and uses a derived context so a stall is distinguished
+	// from a client disconnect (the parent context).
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var stalled atomic.Bool
+	timer := time.AfterFunc(idleTimeout, func() { stalled.Store(true); cancel() })
+	defer timer.Stop()
+	watched := func(delta string) error {
+		timer.Reset(idleTimeout)
+		return onDelta(delta)
 	}
-	return s.streamAnthropic(ctx, cfg, system, msgs, onDelta)
+
+	var (
+		full string
+		err  error
+	)
+	if cfg.Provider == ProviderOpenAI {
+		full, err = s.streamOpenAI(ctx, cfg, system, msgs, watched)
+	} else {
+		full, err = s.streamAnthropic(ctx, cfg, system, msgs, watched)
+	}
+	if stalled.Load() && parent.Err() == nil {
+		return full, fmt.Errorf("provider stream stalled: no data for %s", idleTimeout)
+	}
+	return full, err
 }
 
-// truncateMessages caps each message so a large paste cannot blow up the request.
+// truncateMessages caps each message, then keeps only the most recent turns that
+// fit an aggregate budget — so a long conversation cannot grow the request to
+// the provider without bound (the per-message cap alone does not bound the sum).
 func truncateMessages(msgs []Message) []Message {
-	out := make([]Message, len(msgs))
+	capped := make([]Message, len(msgs))
 	for i, m := range msgs {
 		m.Content = truncate(m.Content, maxMessageChars)
-		out[i] = m
+		capped[i] = m
 	}
-	return out
+	total := 0
+	start := 0
+	for i := len(capped) - 1; i >= 0; i-- {
+		total += len([]rune(capped[i].Content))
+		// Always keep the most recent message; drop older ones past the budget.
+		if total > maxTotalChars && i < len(capped)-1 {
+			start = i + 1
+			break
+		}
+	}
+	return capped[start:]
 }
 
 // truncate shortens s to at most n runes, appending a marker when it cuts.

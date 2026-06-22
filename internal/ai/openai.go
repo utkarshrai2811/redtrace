@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -21,7 +22,7 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, system string, m
 	body, err := json.Marshal(map[string]any{
 		"model":      cfg.Model,
 		"stream":     true,
-		"max_tokens": cfg.MaxTokens,
+		"max_tokens": maxTokens,
 		"messages":   om,
 	})
 	if err != nil {
@@ -51,8 +52,10 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, system string, m
 	}
 
 	var full strings.Builder
+	sawTerminal := false
 	err = readSSE(resp.Body, func(data []byte) (bool, error) {
 		if string(data) == "[DONE]" {
+			sawTerminal = true
 			return true, nil
 		}
 		var ev struct {
@@ -60,10 +63,19 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, system string, m
 				Delta struct {
 					Content string `json:"content"`
 				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
 		}
 		if e := json.Unmarshal(data, &ev); e != nil {
 			return false, nil
+		}
+		// Many OpenAI-compatible endpoints (OpenRouter, OpenAI mid-stream failures,
+		// some local runtimes) deliver errors in-band over HTTP 200.
+		if ev.Error.Message != "" {
+			return true, fmt.Errorf("openai: %s", ev.Error.Message)
 		}
 		for _, c := range ev.Choices {
 			if c.Delta.Content != "" {
@@ -72,8 +84,15 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, system string, m
 					return true, e
 				}
 			}
+			if c.FinishReason != nil && *c.FinishReason != "" {
+				sawTerminal = true
+			}
 		}
 		return false, nil
 	})
+	if err == nil && !sawTerminal {
+		// No [DONE] and no finish_reason on a clean EOF means a dropped stream.
+		return full.String(), errors.New("openai: stream ended before completion")
+	}
 	return full.String(), err
 }

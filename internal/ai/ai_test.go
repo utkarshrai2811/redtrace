@@ -78,6 +78,74 @@ func TestStreamAnthropicMock(t *testing.T) {
 	}
 }
 
+func TestStreamOpenAIIncompleteIsError(t *testing.T) {
+	// Deltas but no [DONE] and no finish_reason → a dropped stream, surfaced as
+	// an error rather than a silent (truncated) success.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+	}))
+	defer srv.Close()
+	s := NewService(Config{Provider: ProviderOpenAI, Model: "gpt-x", APIKey: "k", BaseURL: srv.URL}, nil)
+	full, _, err := collect(t, s, KindChat)
+	if err == nil || !strings.Contains(err.Error(), "before completion") {
+		t.Errorf("err = %v, want an incomplete-stream error", err)
+	}
+	if full != "partial" {
+		t.Errorf("partial text should be preserved, got %q", full)
+	}
+}
+
+func TestStreamOpenAIInBandError(t *testing.T) {
+	// An error delivered in-band over HTTP 200 must surface, not be swallowed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"error\":{\"message\":\"context length exceeded\"}}\n\n")
+	}))
+	defer srv.Close()
+	s := NewService(Config{Provider: ProviderOpenAI, Model: "gpt-x", APIKey: "k", BaseURL: srv.URL}, nil)
+	if _, _, err := collect(t, s, KindChat); err == nil || !strings.Contains(err.Error(), "context length") {
+		t.Errorf("err = %v, want the in-band provider error surfaced", err)
+	}
+}
+
+func TestStreamAnthropicIncompleteIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w,
+			"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"cut\"}}\n\n")
+	}))
+	defer srv.Close()
+	s := NewService(Config{Provider: ProviderAnthropic, Model: "claude-x", APIKey: "k", BaseURL: srv.URL}, nil)
+	if _, _, err := collect(t, s, KindChat); err == nil || !strings.Contains(err.Error(), "before completion") {
+		t.Errorf("err = %v, want an incomplete-stream error", err)
+	}
+}
+
+func TestTruncateMessagesAggregateCap(t *testing.T) {
+	// Many full-size messages must be trimmed to the most recent within the
+	// aggregate budget, always keeping the last one.
+	big := strings.Repeat("x", maxMessageChars)
+	msgs := make([]Message, 0, 20)
+	for i := 0; i < 20; i++ {
+		msgs = append(msgs, Message{Role: RoleUser, Content: big})
+	}
+	out := truncateMessages(msgs)
+	if len(out) >= len(msgs) {
+		t.Errorf("expected aggregate trimming, kept %d of %d", len(out), len(msgs))
+	}
+	total := 0
+	for _, m := range out {
+		total += len([]rune(m.Content))
+	}
+	if total > maxTotalChars+maxMessageChars {
+		t.Errorf("aggregate %d exceeds budget", total)
+	}
+	if len(out) == 0 {
+		t.Error("must always keep at least the most recent message")
+	}
+}
+
 func TestStreamProviderErrorSurfaces(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -148,7 +216,7 @@ func TestTruncateMessages(t *testing.T) {
 
 func TestNormalizeDefaults(t *testing.T) {
 	c := normalize(Config{Provider: "ANTHROPIC"})
-	if c.Provider != ProviderAnthropic || c.Model != defaultAnthropicModel || c.MaxTokens != defaultMaxTokens {
+	if c.Provider != ProviderAnthropic || c.Model != defaultAnthropicModel {
 		t.Errorf("normalize = %+v", c)
 	}
 	if c2 := normalize(Config{Provider: "weird"}); c2.Provider != ProviderAnthropic {

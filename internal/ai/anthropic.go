@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -17,7 +18,7 @@ func (s *Service) streamAnthropic(ctx context.Context, cfg Config, system string
 	}
 	body, err := json.Marshal(map[string]any{
 		"model":      cfg.Model,
-		"max_tokens": cfg.MaxTokens,
+		"max_tokens": maxTokens,
 		"system":     system,
 		"stream":     true,
 		"messages":   am,
@@ -48,6 +49,7 @@ func (s *Service) streamAnthropic(ctx context.Context, cfg Config, system string
 	}
 
 	var full strings.Builder
+	sawStop := false
 	err = readSSE(resp.Body, func(data []byte) (bool, error) {
 		var ev struct {
 			Type  string `json:"type"`
@@ -72,9 +74,15 @@ func (s *Service) streamAnthropic(ctx context.Context, cfg Config, system string
 		case "error":
 			return true, fmt.Errorf("anthropic: %s", ev.Error.Message)
 		case "message_stop":
+			sawStop = true
 			return true, nil
 		}
 		return false, nil
 	})
+	if err == nil && !sawStop {
+		// Clean EOF without the terminal frame means the upstream dropped the
+		// connection mid-reply; surface it so the partial isn't shown as complete.
+		return full.String(), errors.New("anthropic: stream ended before completion")
+	}
 	return full.String(), err
 }
