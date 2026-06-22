@@ -60,6 +60,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactions are viewable only through the authenticated API/UI.
 
 ### Fixed
+- Post-Phase-7 (AI integration) review pass:
+  - **Streaming:** a provider stream that ends without its terminal frame (a
+    dropped connection) is now reported as an error instead of a silently
+    truncated reply; OpenAI-compatible in-band errors (an `{"error":…}` frame
+    over HTTP 200) are surfaced; an idle watchdog cancels a stalled upstream so
+    it can't pin a goroutine; and a partial reply stays visible in the thread on
+    error (matching what the server persisted) rather than vanishing until
+    reload.
+  - **Credentials:** a flag/env-supplied API key is no longer written to disk by
+    an unrelated Settings save (restoring the documented in-memory-only
+    invariant), and a `--ai-provider` flag no longer inherits a different
+    persisted provider's base URL/model — which could have sent the key to the
+    wrong endpoint.
+  - **Robustness:** AI conversation deletes/appends are transactional and cascade
+    their messages (deleting a missing conversation now returns 404); concurrent
+    streams on one conversation are rejected (409) instead of interleaving; the
+    total context re-sent each turn is bounded; and a save failure ends the
+    stream with an error instead of a false `done`.
+  - **UI/cleanup:** the composer stays disabled until config loads; the streaming
+    reply and errors are announced to assistive tech; auto-scroll no longer
+    fights reading up mid-stream; the dead, unconfigurable `MaxTokens` knob was
+    removed (fixed 4096); provider-error truncation is rune-safe. Adds AI
+    storage and API tests.
 - Post-Phase-6 (Out-of-band / Collaborator) review pass:
   - **Listeners:** a DNS query or HTTP request is now recorded only when the
     queried name/Host is under the configured OOB domain, and the DNS responder
