@@ -642,7 +642,7 @@ export interface AIConfig {
 }
 
 export interface AIConfigInput {
-  provider: string;
+  provider: AIProvider;
   model: string;
   baseUrl: string;
   apiKey?: string;

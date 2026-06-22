@@ -9,7 +9,9 @@ export function Composer() {
 
   const [value, setValue] = useState('');
 
-  const disabled = streaming || (config ? !config.enabled : false);
+  // Treat unloaded config as disabled so a send can't fire before we know AI is
+  // enabled (which the backend would just reject with an error).
+  const disabled = streaming || !config?.enabled;
 
   const submit = () => {
     const content = value.trim();

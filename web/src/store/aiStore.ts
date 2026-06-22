@@ -89,7 +89,16 @@ export const useAIStore = create<AIState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const conversations = await api.aiConversations();
-      set({ loading: false, conversations });
+      // Preserve a just-created active conversation the server list may not
+      // include yet (its create POST can race this fetch).
+      set((s) => {
+        const ids = new Set(conversations.map((c) => c.id));
+        const pending =
+          s.activeId && !ids.has(s.activeId)
+            ? s.conversations.filter((c) => c.id === s.activeId)
+            : [];
+        return { loading: false, conversations: [...pending, ...conversations] };
+      });
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load conversations';
       set({ loading: false, error: message });
@@ -182,6 +191,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     const controller = new AbortController();
     streamController = controller;
     set({ streaming: true, draft: '', streamError: null });
+    let finalized = false;
     try {
       await streamAIMessage(
         activeId,
@@ -192,6 +202,7 @@ export const useAIStore = create<AIState>((set, get) => ({
             // A done frame can be {} when nothing was generated; only push a
             // real assistant message.
             if (!message || !message.id) return;
+            finalized = true;
             set((s) => ({ messages: [...s.messages, message] }));
           },
           onError: (message) => set({ streamError: message }),
@@ -207,8 +218,23 @@ export const useAIStore = create<AIState>((set, get) => ({
       set({ streamError: message });
     } finally {
       if (streamController === controller) streamController = null;
-      // Only clear streaming state if this stream is still the active one.
-      if (!controller.signal.aborted) set({ streaming: false, draft: '' });
+      // Only touch this stream's state if it is still the active one.
+      if (!controller.signal.aborted) {
+        // On an error or dropped stream (no terminal 'done'), keep the streamed
+        // partial visible — the server persisted it, so the live thread should
+        // match. It reconciles to the real row on the next openConversation.
+        const { draft } = get();
+        if (!finalized && draft) {
+          const partial: AIMessageView = {
+            id: `local-${Date.now()}`,
+            role: 'assistant',
+            content: draft,
+            createdAt: new Date().toISOString(),
+          };
+          set((s) => ({ messages: [...s.messages, partial] }));
+        }
+        set({ streaming: false, draft: '' });
+      }
     }
   },
 
